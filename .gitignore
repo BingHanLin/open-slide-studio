@@ -1,0 +1,16 @@
+# Dependencies (includes the version-pinned opencode binary — fetched via npm,
+# never committed; see README "Prerequisites")
+node_modules/
+
+# Scaffolded open-slide workspace — regenerated via `npm run init-slides`.
+# Decks the agent writes live here and are treated as user data, not repo source.
+slides/
+
+# Local scratch / artifacts
+screenshot.png
+
+# Logs & OS junk
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

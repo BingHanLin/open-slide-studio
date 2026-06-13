@@ -1,0 +1,19 @@
+{
+  "//": "All paths/commands the shell needs. Edit these for your machine.",
+
+  "slideProjectDir": "slides",
+  "//slideProjectDir": "Folder holding the open-slide project. Relative to this app dir, or absolute. Run `npm run init-slides` once to scaffold it.",
+
+  "slideDevCommand": "npm",
+  "slideDevArgs": ["run", "dev"],
+  "//slideDev": "Runs `open-slide dev` (the project's npm script) inside slideProjectDir.",
+  "slideUrl": "http://localhost:5173",
+
+  "opencode": {
+    "bin": "node_modules/opencode-ai/bin/opencode.exe",
+    "hostname": "127.0.0.1",
+    "port": 4099,
+    "model": "kimi-for-coding/k2p6"
+  },
+  "//opencode": "We spawn `<bin> serve` ourselves with cwd=slideProjectDir. bin is the opencode-ai npm binary (version-pinned in package.json, downloaded on npm install); a bare name like \"opencode\" would resolve via PATH instead. Path bins are resolved against the app root. Authenticate once with `opencode auth login`. model format is provider/modelID."
+}
