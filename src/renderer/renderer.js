@@ -99,7 +99,7 @@ function applyLocale(locale) {
   titleEl.textContent = t.title;
   modelEl.title = t.modelTitle;
   inputEl.placeholder = t.placeholder;
-  sendEl.textContent = t.send;
+  sendEl.title = t.send;
   collapseEl.title = BTN_TITLES[locale][0];
   expandEl.title = BTN_TITLES[locale][1];
   if (placeholderEl.style.display !== "none") placeholderEl.textContent = t.previewLoading;
@@ -140,10 +140,18 @@ function scrollToEnd() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// ChatGPT-style auto-growing textarea.
+function autoGrow() {
+  inputEl.style.height = "auto";
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
+}
+inputEl.addEventListener("input", autoGrow);
+
 async function send() {
   const text = inputEl.value.trim();
   if (!text) return;
   inputEl.value = "";
+  autoGrow();
   sendEl.disabled = true;
   addMessage("user", text);
 
