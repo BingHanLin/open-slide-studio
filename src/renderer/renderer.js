@@ -266,10 +266,10 @@ async function loadModels() {
       const og = document.createElement("optgroup");
       og.label = g.name;
       for (const m of g.models) {
-        const id = `${g.id}/${m}`;
+        const id = `${g.id}/${m.id}`;
         const opt = document.createElement("option");
         opt.value = id;
-        opt.textContent = m;
+        opt.textContent = m.name;
         if (id === current) opt.selected = true;
         og.appendChild(opt);
       }

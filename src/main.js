@@ -305,7 +305,10 @@ async function handleListModels() {
   const groups = (data.providers || []).map((p) => ({
     id: p.id,
     name: p.name,
-    models: Object.keys(p.models || {}).sort(),
+    // Use each model's friendly display name (e.g. "Kimi K2.6 Code") not its id.
+    models: Object.entries(p.models || {})
+      .map(([id, m]) => ({ id, name: m.name || id }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
   }));
   return { current: activeModel, groups };
 }
