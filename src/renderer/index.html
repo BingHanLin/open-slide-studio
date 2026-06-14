@@ -169,6 +169,27 @@
       /* hidden by default — only flashes for real errors */
       #statusbar { display: none; position: absolute; bottom: 12px; left: 12px; right: 12px; font-size: 12px; color: #fff; background: rgba(178,40,40,.94); border-radius: 8px; padding: 8px 12px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
       #statusbar.show { display: block; }
+
+      /* ---- connect-provider modal ---- */
+      .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 200; }
+      .modal-overlay[hidden] { display: none; }
+      .modal { width: 440px; max-width: calc(100vw - 40px); max-height: calc(100vh - 80px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.4); overflow: hidden; }
+      .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 600; }
+      .modal-body { padding: 12px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+      .auth-row { border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 9px; }
+      .auth-rowhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .auth-name { font-size: 13px; font-weight: 600; }
+      .auth-badge { font-size: 11px; color: #46c46a; flex: none; }
+      .auth-method { display: flex; gap: 6px; align-items: center; width: 100%; }
+      .auth-method-col { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+      .auth-input { flex: 1; min-width: 0; background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; color: var(--text); font: inherit; font-size: 12.5px; outline: none; }
+      .auth-input:focus { border-color: var(--accent); }
+      .auth-btn { flex: none; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+      .auth-btn:disabled { opacity: .5; cursor: default; }
+      .auth-instructions { font-size: 12px; color: var(--muted); line-height: 1.5; white-space: pre-wrap; }
+      .auth-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+      .auth-msg { font-size: 12px; }
+      .auth-msg.err { color: #e05a5a; }
     </style>
   </head>
   <body>
@@ -214,6 +235,15 @@
         <div id="placeholder">投影片預覽載入中…</div>
         <div id="statusbar"></div>
       </section>
+    </div>
+    <div id="auth-modal" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <span id="auth-title">連接模型供應商</span>
+          <button id="auth-close" class="iconbtn">×</button>
+        </div>
+        <div id="auth-body" class="modal-body"></div>
+      </div>
     </div>
     <script src="./renderer.js"></script>
   </body>

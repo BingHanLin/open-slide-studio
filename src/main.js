@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, ipcMain, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
@@ -450,6 +450,62 @@ async function handleDeleteSession(_evt, id) {
   return { ok: true, wasCurrent };
 }
 
+// ---- model-provider authentication ------------------------------------------
+
+// Combine the catalog (display names + connected state) with each provider's
+// auth methods, so the connect panel can render "paste key" vs "login" per
+// provider. Only providers that expose at least one auth method are listable.
+async function handleAuthMethods() {
+  await waitForClient();
+  const list = unwrap(await client.provider.list({ query: { directory: slideDir } }));
+  const methods = unwrap(await client.provider.auth({ query: { directory: slideDir } }));
+  const connected = new Set(list.connected || []);
+  const providers = (list.all || [])
+    .map((p) => ({
+      id: p.id,
+      name: p.name || p.id,
+      connected: connected.has(p.id),
+      methods: methods[p.id] || [],
+    }))
+    .filter((p) => p.methods.length > 0)
+    .sort((a, b) => Number(b.connected) - Number(a.connected) || a.name.localeCompare(b.name));
+  return { providers };
+}
+
+// API-key auth: hand the key to opencode's auth store. We pass it through once
+// and never persist or log it ourselves.
+async function handleAuthSetKey(_evt, { id, key }) {
+  await waitForClient();
+  unwrap(await client.auth.set({ path: { id }, query: { directory: slideDir }, body: { type: "api", key } }));
+  return { ok: true };
+}
+
+// OAuth step 1: fetch the authorization URL and open the system browser. For
+// "auto" (loopback) flows opencode catches the redirect itself, so we await the
+// callback here — the NO_TIMEOUT dispatcher tolerates the human delay. For
+// "code" flows we return instructions so the renderer can collect the code.
+async function handleAuthOauthStart(_evt, { id, method }) {
+  await waitForClient();
+  const auth = unwrap(
+    await client.provider.oauth.authorize({ path: { id }, query: { directory: slideDir }, body: { method } })
+  );
+  if (auth.url) shell.openExternal(auth.url);
+  if (auth.method === "code") {
+    return { done: false, needCode: true, instructions: auth.instructions || "" };
+  }
+  unwrap(await client.provider.oauth.callback({ path: { id }, query: { directory: slideDir }, body: { method } }));
+  return { done: true };
+}
+
+// OAuth step 2 (code flow only): complete with the pasted authorization code.
+async function handleAuthOauthFinish(_evt, { id, method, code }) {
+  await waitForClient();
+  unwrap(
+    await client.provider.oauth.callback({ path: { id }, query: { directory: slideDir }, body: { method, code } })
+  );
+  return { ok: true };
+}
+
 // ---- model selection --------------------------------------------------------
 
 // List the authenticated providers/models for the dropdown, grouped by provider.
@@ -509,6 +565,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("sessions:list", handleListSessions);
   ipcMain.handle("session:switch", handleSwitchSession);
   ipcMain.handle("session:delete", handleDeleteSession);
+  ipcMain.handle("auth:methods", handleAuthMethods);
+  ipcMain.handle("auth:setKey", handleAuthSetKey);
+  ipcMain.handle("auth:oauthStart", handleAuthOauthStart);
+  ipcMain.handle("auth:oauthFinish", handleAuthOauthFinish);
 
   createWindow();
   startSlideServer();

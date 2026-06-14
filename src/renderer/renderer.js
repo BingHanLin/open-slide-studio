@@ -10,6 +10,10 @@ const actionsBtn = document.getElementById("actions-btn");
 const actionsMenu = document.getElementById("actions-menu");
 const convBtn = document.getElementById("conv-btn");
 const convMenu = document.getElementById("conv-menu");
+const authModal = document.getElementById("auth-modal");
+const authTitle = document.getElementById("auth-title");
+const authClose = document.getElementById("auth-close");
+const authBody = document.getElementById("auth-body");
 const appEl = document.getElementById("app");
 const collapseEl = document.getElementById("collapse");
 const expandEl = document.getElementById("expand");
@@ -129,6 +133,17 @@ function cui() {
   return CONV_UI[lang] || CONV_UI.en;
 }
 
+// Connect-provider (model authentication) UI strings per locale.
+const AUTH_UI = {
+  "zh-TW": { title: "連接模型供應商", connect: "連接供應商", connected: "已連線", login: "登入", save: "連接", key: "貼上 API Key", code: "貼上授權碼", codeBtn: "完成", opening: "已開啟瀏覽器…", saving: "連接中…", fail: "連接失敗,請再試一次", empty: "沒有可連接的供應商" },
+  "zh-CN": { title: "连接模型供应商", connect: "连接供应商", connected: "已连接", login: "登录", save: "连接", key: "粘贴 API Key", code: "粘贴授权码", codeBtn: "完成", opening: "已打开浏览器…", saving: "连接中…", fail: "连接失败,请重试", empty: "没有可连接的供应商" },
+  en: { title: "Connect a provider", connect: "Connect provider", connected: "Connected", login: "Log in", save: "Connect", key: "Paste API key", code: "Paste the code", codeBtn: "Done", opening: "Opening browser…", saving: "Connecting…", fail: "Connection failed, try again", empty: "No connectable providers" },
+  ja: { title: "プロバイダーを接続", connect: "プロバイダーを接続", connected: "接続済み", login: "ログイン", save: "接続", key: "APIキーを貼り付け", code: "認証コードを貼り付け", codeBtn: "完了", opening: "ブラウザを開きました…", saving: "接続中…", fail: "接続に失敗しました", empty: "接続できるプロバイダーがありません" },
+};
+function aui() {
+  return AUTH_UI[lang] || AUTH_UI.en;
+}
+
 // Placeholder hints per skill — shown in the empty input while that action is armed.
 const SKILL_PLACEHOLDERS = {
   "zh-TW": {
@@ -180,6 +195,10 @@ function applyLocale(locale) {
   // refresh action chips / active pill in the new language
   if (suggestionsEl.classList.contains("show")) renderSuggestions();
   if (activeSkill) pillLabelEl.textContent = actionLabel(activeSkill);
+  // refresh the connect-provider modal if it's open
+  authTitle.textContent = aui().title;
+  if (!authModal.hidden) renderAuthList();
+  if (modelGroups.length === 0) modelNameEl.textContent = aui().connect;
 }
 
 function applyTheme(theme) {
@@ -858,6 +877,192 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeConvMenu();
 });
 
+// ---- connect a model provider (API key / OAuth) ----
+// All credential handling lives in the opencode server; we only pass values
+// through once and never store them. After any success we refresh the model
+// dropdown so the newly connected provider's models appear.
+let authBusy = false;
+
+async function refreshAfterAuth() {
+  authBusy = false;
+  await loadModels();
+  await renderAuthList();
+}
+
+function authError(parent) {
+  const m = document.createElement("div");
+  m.className = "auth-msg err";
+  m.textContent = aui().fail;
+  parent.appendChild(m);
+}
+
+// API-key method: a password field + Connect button.
+function buildApiMethod(p, method) {
+  const wrap = document.createElement("div");
+  wrap.className = "auth-method";
+  const input = document.createElement("input");
+  input.className = "auth-input";
+  input.type = "password";
+  input.placeholder = method.label || aui().key;
+  const btn = document.createElement("button");
+  btn.className = "auth-btn";
+  btn.textContent = aui().save;
+  const run = async () => {
+    const key = input.value.trim();
+    if (!key || authBusy) return;
+    authBusy = true;
+    btn.disabled = true;
+    btn.textContent = aui().saving;
+    try {
+      await window.api.authSetKey({ id: p.id, key });
+      await refreshAfterAuth();
+    } catch {
+      authBusy = false;
+      btn.disabled = false;
+      btn.textContent = aui().save;
+      authError(wrap);
+    }
+  };
+  btn.addEventListener("click", run);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") run();
+  });
+  wrap.append(input, btn);
+  return wrap;
+}
+
+// OAuth method: a Login button that opens the browser. "auto" flows complete on
+// their own; "code" flows reveal a paste-the-code field.
+function buildOauthMethod(p, method, idx) {
+  const wrap = document.createElement("div");
+  wrap.className = "auth-method-col";
+  const btn = document.createElement("button");
+  btn.className = "auth-btn";
+  const label = method.label || aui().login;
+  btn.textContent = label;
+  wrap.appendChild(btn);
+
+  btn.addEventListener("click", async () => {
+    if (authBusy) return;
+    authBusy = true;
+    btn.disabled = true;
+    btn.textContent = aui().opening;
+    let res;
+    try {
+      res = await window.api.authOauthStart({ id: p.id, method: idx });
+    } catch {
+      authBusy = false;
+      btn.disabled = false;
+      btn.textContent = label;
+      authError(wrap);
+      return;
+    }
+    if (res.done) {
+      await refreshAfterAuth();
+      return;
+    }
+    // code flow: keep the browser open, collect the pasted authorization code
+    if (res.instructions) {
+      const ins = document.createElement("div");
+      ins.className = "auth-instructions";
+      ins.textContent = res.instructions;
+      wrap.appendChild(ins);
+    }
+    const codeRow = document.createElement("div");
+    codeRow.className = "auth-method";
+    const input = document.createElement("input");
+    input.className = "auth-input";
+    input.placeholder = aui().code;
+    const done = document.createElement("button");
+    done.className = "auth-btn";
+    done.textContent = aui().codeBtn;
+    const finish = async () => {
+      const code = input.value.trim();
+      if (!code) return;
+      done.disabled = true;
+      done.textContent = aui().saving;
+      try {
+        await window.api.authOauthFinish({ id: p.id, method: idx, code });
+        await refreshAfterAuth();
+      } catch {
+        done.disabled = false;
+        done.textContent = aui().codeBtn;
+        authError(codeRow);
+      }
+    };
+    done.addEventListener("click", finish);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") finish();
+    });
+    codeRow.append(input, done);
+    wrap.appendChild(codeRow);
+    input.focus();
+  });
+  return wrap;
+}
+
+async function renderAuthList() {
+  authBody.innerHTML = "";
+  let providers = [];
+  try {
+    const res = await window.api.authMethods();
+    providers = res.providers || [];
+  } catch {
+    authError(authBody);
+    return;
+  }
+  if (!providers.length) {
+    const empty = document.createElement("div");
+    empty.className = "auth-empty";
+    empty.textContent = aui().empty;
+    authBody.appendChild(empty);
+    return;
+  }
+  for (const p of providers) {
+    const row = document.createElement("div");
+    row.className = "auth-row";
+    const head = document.createElement("div");
+    head.className = "auth-rowhead";
+    const name = document.createElement("div");
+    name.className = "auth-name";
+    name.textContent = p.name;
+    head.appendChild(name);
+    if (p.connected) {
+      const badge = document.createElement("div");
+      badge.className = "auth-badge";
+      badge.textContent = "✓ " + aui().connected;
+      head.appendChild(badge);
+    }
+    row.appendChild(head);
+    p.methods.forEach((m, idx) => {
+      if (m.type === "api") row.appendChild(buildApiMethod(p, m));
+      else if (m.type === "oauth") row.appendChild(buildOauthMethod(p, m, idx));
+    });
+    authBody.appendChild(row);
+  }
+}
+
+async function openAuthModal() {
+  authModal.hidden = false;
+  authTitle.textContent = aui().title;
+  authBody.innerHTML = "";
+  const loading = document.createElement("div");
+  loading.className = "auth-empty";
+  loading.textContent = "…";
+  authBody.appendChild(loading);
+  await renderAuthList();
+}
+function closeAuthModal() {
+  authModal.hidden = true;
+}
+authClose.addEventListener("click", closeAuthModal);
+authModal.addEventListener("click", (e) => {
+  if (e.target === authModal) closeAuthModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !authModal.hidden) closeAuthModal();
+});
+
 // ---- custom model dropdown ----
 let modelGroups = [];
 let currentModelId = null;
@@ -888,6 +1093,15 @@ function renderModelMenu() {
       modelMenu.appendChild(item);
     }
   }
+  // entry point to the connect-provider modal (always available)
+  const connect = document.createElement("div");
+  connect.className = "item conv-new";
+  connect.textContent = "＋ " + aui().connect;
+  connect.addEventListener("click", () => {
+    closeModelMenu();
+    openAuthModal();
+  });
+  modelMenu.appendChild(connect);
 }
 
 function chooseModel(id) {
@@ -920,9 +1134,16 @@ document.addEventListener("keydown", (e) => {
 async function loadModels() {
   try {
     const { current, groups } = await window.api.listModels();
-    modelGroups = groups;
+    modelGroups = groups || [];
     currentModelId = current;
-    modelNameEl.textContent = modelNameOf(current);
+    // No authenticated provider yet → guide the user to connect one instead of
+    // showing an empty dropdown.
+    if (modelGroups.length === 0) {
+      modelNameEl.textContent = aui().connect;
+      openAuthModal();
+    } else {
+      modelNameEl.textContent = modelNameOf(current);
+    }
   } catch (err) {
     showError(t.modelsError(err.message));
   }
