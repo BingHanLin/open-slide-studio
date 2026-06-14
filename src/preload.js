@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld("api", {
 
   onSlideReady: (cb) => ipcRenderer.on("slide:ready", (_e, url) => cb(url)),
   onStatus: (cb) => ipcRenderer.on("shell:status", (_e, text) => cb(text)),
-  onEvent: (cb) => ipcRenderer.on("chat:event", (_e, evt) => cb(evt)),
+  onStream: (cb) => ipcRenderer.on("chat:stream", (_e, payload) => cb(payload)),
+  onActivity: (cb) => ipcRenderer.on("chat:activity", (_e, payload) => cb(payload)),
 });

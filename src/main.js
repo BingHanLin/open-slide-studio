@@ -111,13 +111,15 @@ async function startOpencode() {
   let bin = config.opencode.bin || "opencode";
   if (/[\\/]/.test(bin) && !path.isAbsolute(bin)) bin = path.join(ROOT, bin);
   const cmd = /\s/.test(bin) ? `"${bin}"` : bin; // quote paths with spaces under shell
-  const { hostname, port, model } = config.opencode;
+  const { hostname, port, model, permission } = config.opencode;
 
   status(`starting opencode serve (cwd=${slideDir})`);
+  // permission lockdown travels with the server config (see config.json).
+  const serverConfig = { model, ...(permission ? { permission } : {}) };
   opencodeProc = spawn(cmd, ["serve", `--hostname=${hostname}`, `--port=${port}`], {
     cwd: slideDir,
     shell: true, // Windows: resolves the exe / .cmd shim on PATH
-    env: { ...process.env, OPENCODE_CONFIG_CONTENT: JSON.stringify({ model }) },
+    env: { ...process.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(serverConfig) },
   });
 
   // The server prints "opencode server listening on <url>" once ready.
@@ -145,12 +147,71 @@ async function startOpencode() {
   subscribeEvents(); // fire-and-forget live event stream
 }
 
-// Forward opencode events to the renderer so the chat can show live progress.
+let currentAssistantMsg = null; // id of the assistant message we're streaming
+const announcedTools = new Set(); // callIDs already surfaced this turn
+
+// Translate a tool into a friendly status — or null to hide it entirely.
+// Non-engineers should never see raw tool names, diffs, or permission noise.
+function friendlyTool(tool) {
+  switch (tool) {
+    case "write":
+    case "edit":
+    case "patch":
+      return "正在編寫投影片…";
+    case "task":
+    case "subtask":
+      return "處理中…";
+    default:
+      return null; // read/list/glob/grep/etc. — hide
+  }
+}
+
+function slideLabel(file) {
+  let label = path.basename(file);
+  if (/^index\.(tsx?|jsx?|mdx?)$/i.test(label)) label = path.basename(path.dirname(file));
+  return label;
+}
+
+// Subscribe to the opencode event stream and translate it into two simple
+// renderer signals: chat:stream (assistant text, replace) and chat:activity
+// (a transient friendly status line). Everything else stays hidden.
 async function subscribeEvents() {
   try {
     const events = await client.event.subscribe();
     for await (const event of events.stream) {
-      send("chat:event", { type: event.type, properties: event.properties });
+      const p = event.properties || {};
+      switch (event.type) {
+        case "message.updated": {
+          const info = p.info;
+          if (info?.sessionID === sessionId && info?.role === "assistant") {
+            currentAssistantMsg = info.id;
+          }
+          break;
+        }
+        case "message.part.updated": {
+          const part = p.part;
+          if (!part || part.sessionID !== sessionId) break;
+          if (part.messageID !== currentAssistantMsg) break;
+          if (part.type === "text" && part.text) {
+            send("chat:stream", { text: part.text });
+          } else if (part.type === "reasoning") {
+            send("chat:activity", { text: "思考中…" });
+          } else if (part.type === "tool" && !announcedTools.has(part.callID)) {
+            announcedTools.add(part.callID);
+            const msg = friendlyTool(part.tool);
+            if (msg) send("chat:activity", { text: msg });
+          }
+          break;
+        }
+        case "file.edited": {
+          if (p.file) send("chat:activity", { text: `更新投影片:${slideLabel(p.file)}` });
+          break;
+        }
+        case "session.error": {
+          send("chat:activity", { text: "發生錯誤,請再試一次" });
+          break;
+        }
+      }
     }
   } catch (err) {
     status(`event stream ended: ${err.message}`);
@@ -170,9 +231,14 @@ async function ensureSession() {
   return sessionId;
 }
 
-// Chat send: route the user's natural-language message to the agent.
+// Chat send: route the user's natural-language message to the agent. Live output
+// is driven by subscribeEvents(); the returned text is only a fallback in case
+// no streaming text part arrived.
 async function handleSend(_evt, text) {
   await ensureSession();
+  currentAssistantMsg = null;
+  announcedTools.clear();
+
   const [providerID, ...rest] = String(config.opencode.model).split("/");
   const modelID = rest.join("/");
   const result = unwrap(
@@ -185,14 +251,13 @@ async function handleSend(_evt, text) {
       },
     })
   );
-  // Pull any text parts out of the final assistant message.
   const parts = result?.parts || result?.message?.parts || [];
   const replyText = parts
     .filter((p) => p.type === "text" && p.text)
     .map((p) => p.text)
     .join("\n")
     .trim();
-  return { text: replyText || "(no text reply — check the slide preview)" };
+  return { text: replyText };
 }
 
 // ---- window -----------------------------------------------------------------

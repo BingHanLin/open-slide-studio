@@ -7,6 +7,11 @@ const frameEl = document.getElementById("frame");
 const placeholderEl = document.getElementById("placeholder");
 const statusEl = document.getElementById("statusbar");
 
+// Refs to the in-flight assistant turn, updated by the stream/activity events.
+let activeBubble = null;
+let activeActivity = null;
+let streamed = false;
+
 function addMessage(role, text) {
   const div = document.createElement("div");
   div.className = `msg ${role}`;
@@ -16,24 +21,36 @@ function addMessage(role, text) {
   return div;
 }
 
+function scrollToEnd() {
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 async function send() {
   const text = inputEl.value.trim();
   if (!text) return;
   inputEl.value = "";
   sendEl.disabled = true;
   addMessage("user", text);
-  const pending = addMessage("agent thinking", "正在製作投影片…");
+
+  // Assistant bubble fills in via chat:stream; activity line shows friendly
+  // progress (思考中… / 更新投影片:…) and is removed when the turn ends.
+  activeBubble = addMessage("agent", "");
+  activeActivity = addMessage("agent thinking", "正在製作投影片…");
+  streamed = false;
 
   try {
     const reply = await window.api.sendMessage(text);
-    pending.className = "msg agent";
-    pending.textContent = reply.text;
+    if (!streamed) activeBubble.textContent = reply?.text || "完成了,看右側預覽 👉";
   } catch (err) {
-    pending.className = "msg agent";
-    pending.textContent = `出錯了:${err.message}`;
+    activeBubble.textContent = `出錯了:${err.message}`;
   } finally {
+    if (activeActivity) activeActivity.remove();
+    if (activeBubble && !activeBubble.textContent) activeBubble.remove();
+    activeBubble = null;
+    activeActivity = null;
     sendEl.disabled = false;
     inputEl.focus();
+    scrollToEnd();
   }
 }
 
@@ -56,9 +73,20 @@ window.api.onStatus((text) => {
   statusEl.textContent = text;
 });
 
-// Best-effort live progress: surface session events as a transient status line.
-window.api.onEvent((evt) => {
-  if (evt.type) statusEl.textContent = `agent: ${evt.type}`;
+// Streaming assistant text — replace the bubble contents as it grows.
+window.api.onStream(({ text }) => {
+  if (!activeBubble) return;
+  streamed = true;
+  activeBubble.textContent = text;
+  scrollToEnd();
+});
+
+// Friendly progress — update the transient activity line under the bubble.
+window.api.onActivity(({ text }) => {
+  if (activeActivity) {
+    activeActivity.textContent = text;
+    scrollToEnd();
+  }
 });
 
 inputEl.focus();

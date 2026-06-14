@@ -13,7 +13,15 @@
     "bin": "node_modules/opencode-ai/bin/opencode.exe",
     "hostname": "127.0.0.1",
     "port": 4099,
-    "model": "kimi-for-coding/k2p6"
+    "model": "kimi-for-coding/k2p6",
+    "permission": {
+      "edit": "allow",
+      "bash": "deny",
+      "webfetch": "deny",
+      "external_directory": "deny",
+      "doom_loop": "deny"
+    }
   },
+  "//permission": "Lockdown for non-engineers. edit=allow lets the agent freely write slide files; external_directory=deny confines it to the slide project; bash/webfetch/doom_loop=deny block shell, network, runaway loops. NEVER use \"ask\" — the headless server has no one to answer and would hang.",
   "//opencode": "We spawn `<bin> serve` ourselves with cwd=slideProjectDir. bin is the opencode-ai npm binary (version-pinned in package.json, downloaded on npm install); a bare name like \"opencode\" would resolve via PATH instead. Path bins are resolved against the app root. Authenticate once with `opencode auth login`. model format is provider/modelID."
 }
