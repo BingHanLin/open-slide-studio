@@ -26,6 +26,12 @@ async function noTimeoutFetch(request) {
 const ROOT = path.join(__dirname, "..");
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, "config.json"), "utf8"));
 
+// Read-only app code lives under ROOT (an asar archive once packaged). Anything
+// we write at runtime — the scaffolded slide deck, user settings — must live in
+// a writable location instead: the project root in dev, the per-user data dir
+// when installed.
+const DATA_ROOT = app.isPackaged ? app.getPath("userData") : ROOT;
+
 // Installed opencode versions, surfaced as a small label in the panel. (Their
 // package.json blocks subpath require via "exports", so read the file directly.)
 function readPkgVersion(...parts) {
@@ -40,11 +46,16 @@ const sdkVersion = readPkgVersion("@opencode-ai", "sdk");
 
 const slideDir = path.isAbsolute(config.slideProjectDir)
   ? config.slideProjectDir
-  : path.join(ROOT, config.slideProjectDir);
+  : path.join(DATA_ROOT, config.slideProjectDir);
+
+// Installed builds ship the slide deck (and its node_modules) as a read-only
+// template under resources/; it's copied into the writable slideDir on first
+// launch. In dev there's no template — the deck already lives at slideDir.
+const SLIDE_TEMPLATE = app.isPackaged ? path.join(process.resourcesPath, "slides-template") : null;
 
 // User-picked model persists here (separate from config.json so we never
 // rewrite the user's hand-edited config).
-const SETTINGS_PATH = path.join(ROOT, "user-settings.json");
+const SETTINGS_PATH = path.join(DATA_ROOT, "user-settings.json");
 function loadSettings() {
   try {
     return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8"));
@@ -154,17 +165,42 @@ function onSlideOutput(buf) {
   }
 }
 
+// Seed the slide workspace on first launch (installed builds only): copy the
+// bundled template — deck source + node_modules — into the writable slideDir,
+// once. After that the agent edits it and Vite caches into it freely.
+async function ensureSlideProject() {
+  if (fs.existsSync(slideDir)) return;
+  if (!SLIDE_TEMPLATE || !fs.existsSync(SLIDE_TEMPLATE)) return; // dev: nothing to seed
+  status("first launch — preparing the slide workspace (one-time copy)…");
+  await fs.promises.cp(SLIDE_TEMPLATE, slideDir, { recursive: true });
+  status("slide workspace ready");
+}
+
+// Start the open-slide (Vite) dev server. Installed builds have no Node/npm on
+// the user's machine, so run the CLI entry with Electron's own bundled Node
+// (ELECTRON_RUN_AS_NODE) instead of `npm run dev`; dev keeps the npm script.
+function spawnSlideDev() {
+  if (app.isPackaged) {
+    const cli = path.join(slideDir, "node_modules", "@open-slide", "core", "bin.js");
+    return spawn(process.execPath, [cli, "dev"], {
+      cwd: slideDir,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    });
+  }
+  return spawn(config.slideDevCommand, config.slideDevArgs, {
+    cwd: slideDir,
+    shell: true, // dev: needed on Windows so the npm/.cmd shim resolves
+    env: process.env,
+  });
+}
+
 function startSlideServer() {
   if (!fs.existsSync(slideDir)) {
     statusError(`slide project not found at ${slideDir} — run \`npm run init-slides\` first`);
     return;
   }
   status(`starting open-slide dev server in ${slideDir}`);
-  slideProc = spawn(config.slideDevCommand, config.slideDevArgs, {
-    cwd: slideDir,
-    shell: true, // needed on Windows so .cmd shims (npm/npx) resolve
-    env: process.env,
-  });
+  slideProc = spawnSlideDev();
   slideProc.stdout.on("data", onSlideOutput);
   slideProc.stderr.on("data", onSlideOutput); // vite prints the URL on stdout, but be safe
   slideProc.on("exit", (code) => {
@@ -184,6 +220,9 @@ async function startOpencode() {
   // root (NOT the slideDir cwd we spawn in).
   let bin = config.opencode.bin || "opencode";
   if (/[\\/]/.test(bin) && !path.isAbsolute(bin)) bin = path.join(ROOT, bin);
+  // The bundled binary is asar-unpacked (it can't be spawned from inside the
+  // archive); point at the on-disk copy electron-builder extracts alongside it.
+  if (app.isPackaged) bin = bin.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
   const cmd = /\s/.test(bin) ? `"${bin}"` : bin; // quote paths with spaces under shell
   const { hostname, port, permission } = config.opencode;
 
@@ -674,6 +713,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("auth:oauthFinish", handleAuthOauthFinish);
 
   createWindow();
+  await ensureSlideProject();
   startSlideServer();
 
   try {
