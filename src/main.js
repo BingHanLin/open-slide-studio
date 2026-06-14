@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
@@ -185,17 +185,17 @@ async function startOpencode() {
 let currentAssistantMsg = null; // id of the assistant message we're streaming
 const announcedTools = new Set(); // callIDs already surfaced this turn
 
-// Translate a tool into a friendly status — or null to hide it entirely.
-// Non-engineers should never see raw tool names, diffs, or permission noise.
-function friendlyTool(tool) {
+// Map a tool to an activity "kind" (localized in the renderer) — or null to
+// hide it. Non-engineers never see raw tool names, diffs, or permission noise.
+function toolKind(tool) {
   switch (tool) {
     case "write":
     case "edit":
     case "patch":
-      return "正在編寫投影片…";
+      return "editing";
     case "task":
     case "subtask":
-      return "處理中…";
+      return "working";
     default:
       return null; // read/list/glob/grep/etc. — hide
   }
@@ -230,20 +230,20 @@ async function subscribeEvents() {
           if (part.type === "text" && part.text) {
             send("chat:stream", { text: part.text });
           } else if (part.type === "reasoning") {
-            send("chat:activity", { text: "思考中…" });
+            send("chat:activity", { kind: "thinking" });
           } else if (part.type === "tool" && !announcedTools.has(part.callID)) {
             announcedTools.add(part.callID);
-            const msg = friendlyTool(part.tool);
-            if (msg) send("chat:activity", { text: msg });
+            const kind = toolKind(part.tool);
+            if (kind) send("chat:activity", { kind });
           }
           break;
         }
         case "file.edited": {
-          if (p.file) send("chat:activity", { text: `更新投影片:${slideLabel(p.file)}` });
+          if (p.file) send("chat:activity", { kind: "fileEdited", label: slideLabel(p.file) });
           break;
         }
         case "session.error": {
-          send("chat:activity", { text: "發生錯誤,請再試一次" });
+          send("chat:activity", { kind: "error" });
           break;
         }
       }
@@ -328,10 +328,12 @@ function createWindow() {
     width: 1400,
     height: 900,
     title: "open-slide studio",
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true, // right pane uses <webview> so we can read open-slide's settings
     },
   });
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
@@ -340,6 +342,7 @@ function createWindow() {
 // ---- boot -------------------------------------------------------------------
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null); // no native menu bar — this is a kiosk-style app
   ipcMain.handle("chat:send", handleSend);
   ipcMain.handle("models:list", handleListModels);
   ipcMain.handle("model:set", handleSetModel);
