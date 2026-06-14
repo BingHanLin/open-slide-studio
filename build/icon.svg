@@ -1,0 +1,13 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- flat background tile -->
+  <rect width="1024" height="1024" rx="224" fill="#4f7cff"/>
+
+  <!-- back card: a second slide stacked behind -->
+  <rect x="296" y="228" width="500" height="500" rx="74" fill="#aec4ff"/>
+
+  <!-- front card -->
+  <rect x="228" y="296" width="500" height="500" rx="74" fill="#ffffff"/>
+
+  <!-- inner frame: the slide content area -->
+  <rect x="316" y="384" width="324" height="324" rx="44" fill="none" stroke="#4f7cff" stroke-width="36"/>
+</svg>

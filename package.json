@@ -1,12 +1,19 @@
 {
-  "name": "opencode-slides",
+  "name": "open-slide-studio",
+  "productName": "open-slide studio",
   "version": "0.1.0",
   "private": true,
   "description": "Bundled desktop GUI: simplified opencode agent chat (left) + open-slide live web view (right). For non-engineers to build slides by natural language.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "init-slides": "npx @open-slide/cli init slides"
+    "init-slides": "npx @open-slide/cli init slides",
+    "gen-icon": "electron tools/gen-icon.js"
+  },
+  "build": {
+    "appId": "studio.openslide.app",
+    "productName": "open-slide studio",
+    "icon": "build/icon"
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.17.4",

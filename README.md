@@ -1,4 +1,4 @@
-# open-slide studio (skeleton)
+# open-slide studio
 
 A bundled desktop app for **non-engineers** to build slide decks by chatting in
 natural language. One window:
@@ -33,7 +33,7 @@ deck's CLAUDE.md/skills and edits its slide files directly.
 ## Setup
 
 ```bash
-cd opencode-slides
+cd open-slide-studio
 npm install             # also downloads the pinned opencode binary
 npm run init-slides     # scaffolds the open-slide project into ./slides
 npm start

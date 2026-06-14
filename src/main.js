@@ -642,6 +642,7 @@ function createWindow() {
     width: 1400,
     height: 900,
     title: "open-slide studio",
+    icon: path.join(ROOT, "build", process.platform === "win32" ? "icon.ico" : "icon.png"),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
