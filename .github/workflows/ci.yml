@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # `node --check` only parses the files, so no dependency install is needed
+      # — keeps the gate fast. The .mjs end-to-end tests need a live model and run
+      # manually (npm run test:e2e), not here.
+      - run: npm test
