@@ -333,12 +333,24 @@ function queueText(item) {
 function renderQueue() {
   queueEl.innerHTML = "";
   queueEl.classList.toggle("show", queue.length > 0);
-  for (const item of queue) {
+  // Every item here is still waiting (the in-flight turn has already been
+  // shifted out), so each can be removed before the agent picks it up.
+  queue.forEach((item, i) => {
     const div = document.createElement("div");
     div.className = "queued";
-    div.textContent = queueText(item);
+    const txt = document.createElement("span");
+    txt.className = "queued-text";
+    txt.textContent = queueText(item);
+    const x = document.createElement("span");
+    x.className = "queued-x";
+    x.textContent = "×";
+    x.addEventListener("click", () => {
+      queue.splice(i, 1);
+      renderQueue();
+    });
+    div.append(txt, x);
     queueEl.appendChild(div);
-  }
+  });
 }
 
 function submit() {

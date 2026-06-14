@@ -112,7 +112,10 @@
       #queue { display: none; flex-direction: column; gap: 6px; padding: 0 14px 8px; }
       #queue.show { display: flex; }
       #app.collapsed #queue { display: none; }
-      .queued { align-self: flex-end; max-width: 88%; background: var(--user-bubble); color: var(--muted); border: 1px dashed var(--line); border-radius: 16px; padding: 6px 12px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+      .queued { align-self: flex-end; max-width: 88%; display: inline-flex; align-items: flex-start; gap: 8px; background: var(--user-bubble); color: var(--muted); border: 1px dashed var(--line); border-radius: 16px; padding: 6px 12px; font-size: 12.5px; }
+      .queued-text { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+      .queued-x { flex: none; cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1.2; opacity: .7; }
+      .queued-x:hover { color: var(--text); opacity: 1; }
 
       /* selected-action pill inside the composer */
       .pill { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; background: var(--user-bubble); color: var(--text); border-radius: 12px; padding: 3px 6px 3px 10px; font-size: 12px; }
