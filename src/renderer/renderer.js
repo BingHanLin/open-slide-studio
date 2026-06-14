@@ -93,10 +93,9 @@ const I18N = {
 };
 
 // Empty-state action chips → open-slide skills (invoked via /skill-name).
-// `needs:"comments"` chips only appear when the inspector left pending comments.
 const ACTIONS = [
   { skill: "create-slide", icon: "📊" },
-  { skill: "apply-comments", icon: "💬", needs: "comments" },
+  { skill: "apply-comments", icon: "💬" },
   { skill: "create-theme", icon: "🎨" },
 ];
 const ACTION_LABELS = {
@@ -604,7 +603,6 @@ function actionLabel(skill) {
 function renderSuggestions() {
   suggestionsEl.innerHTML = "";
   for (const a of ACTIONS) {
-    if (a.needs === "comments" && !actionContext.hasComments) continue;
     const chip = document.createElement("button");
     chip.className = "chip";
     chip.textContent = actionLabel(a.skill);
@@ -645,7 +643,6 @@ pillXEl.addEventListener("click", clearPill);
 function renderActionsMenu() {
   actionsMenu.innerHTML = "";
   for (const a of ACTIONS) {
-    if (a.needs === "comments" && !actionContext.hasComments) continue;
     const item = document.createElement("div");
     item.className = "item";
     item.textContent = actionLabel(a.skill);
