@@ -50,6 +50,7 @@ let win = null;
 let slideProc = null; // open-slide vite dev server child process
 let opencodeProc = null; // `opencode serve` child process (we own it)
 let client = null; // SDK client bound to our opencode server
+let opencodeUrl = null; // base URL of our opencode server (for raw question endpoints)
 let sessionId = null; // lazily-created opencode session
 let activeModel = loadSettings().model || config.opencode.model; // "provider/modelID"
 let shuttingDown = false; // suppress error toasts from killing child procs on quit
@@ -203,6 +204,7 @@ async function startOpencode() {
     });
   });
 
+  opencodeUrl = url;
   client = createOpencodeClient({ baseUrl: url, fetch: noTimeoutFetch });
   status(`opencode running at ${url}`);
   subscribeEvents(); // fire-and-forget live event stream
@@ -210,6 +212,27 @@ async function startOpencode() {
 
 let currentAssistantMsg = null; // id of the assistant message we're streaming
 const announcedTools = new Set(); // callIDs already surfaced this turn
+const seenQuestions = new Set(); // question callIDs already forwarded to the renderer
+
+// The agent's "question" tool blocks the turn until answered. The SDK event
+// stream drops the question.v2.asked event, so we detect the running tool part
+// and resolve its requestID from GET /question (matching the tool callID).
+async function resolveAndSendQuestion(callID) {
+  for (let i = 0; i < 15; i++) {
+    try {
+      const arr = await (await undiciFetch(`${opencodeUrl}/question`)).json();
+      const q = (Array.isArray(arr) ? arr : []).find(
+        (x) => x.sessionID === sessionId && x.questions && (!callID || x.tool?.callID === callID)
+      );
+      if (q) {
+        send("chat:question", { requestID: q.id, questions: q.questions });
+        return;
+      }
+    } catch {}
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  statusError("could not resolve pending question");
+}
 
 // Map a tool to an activity "kind" (localized in the renderer) — or null to
 // hide it. Non-engineers never see raw tool names, diffs, or permission noise.
@@ -257,9 +280,17 @@ async function subscribeEvents() {
           if (!part || part.sessionID !== sessionId) break;
           if (part.messageID !== currentAssistantMsg) break;
           if (part.type === "text" && part.text) {
-            send("chat:stream", { text: part.text });
+            send("chat:stream", { id: part.id, text: part.text });
           } else if (part.type === "reasoning") {
             send("chat:activity", { kind: "thinking" });
+          } else if (
+            part.type === "tool" &&
+            part.tool === "question" &&
+            part.state?.status === "running" &&
+            !seenQuestions.has(part.callID)
+          ) {
+            seenQuestions.add(part.callID);
+            resolveAndSendQuestion(part.callID);
           } else if (part.type === "tool" && !announcedTools.has(part.callID)) {
             announcedTools.add(part.callID);
             const kind = toolKind(part.tool);
@@ -304,6 +335,7 @@ async function handleSend(_evt, { text, skill } = {}) {
   await ensureSession();
   currentAssistantMsg = null;
   announcedTools.clear();
+  seenQuestions.clear();
 
   let result;
   if (skill) {
@@ -331,6 +363,26 @@ async function handleSend(_evt, { text, skill } = {}) {
     .join("\n")
     .trim();
   return { text: replyText };
+}
+
+// ---- question reply ---------------------------------------------------------
+
+// Answer the agent's pending question (unblocks the turn). answers is an array
+// with one entry per question, each an array of selected option labels.
+async function handleReplyQuestion(_evt, { requestID, answers }) {
+  const res = await undiciFetch(`${opencodeUrl}/question/${requestID}/reply`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ answers }),
+  });
+  return { ok: res.ok };
+}
+
+async function handleRejectQuestion(_evt, requestID) {
+  try {
+    await undiciFetch(`${opencodeUrl}/question/${requestID}/reject`, { method: "POST" });
+  } catch {}
+  return { ok: true };
 }
 
 // ---- action context ---------------------------------------------------------
@@ -405,6 +457,8 @@ app.whenReady().then(async () => {
   ipcMain.handle("models:list", handleListModels);
   ipcMain.handle("model:set", handleSetModel);
   ipcMain.handle("actions:context", () => ({ hasComments: hasPendingComments() }));
+  ipcMain.handle("question:reply", handleReplyQuestion);
+  ipcMain.handle("question:reject", handleRejectQuestion);
 
   createWindow();
   startSlideServer();

@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld("api", {
   listModels: () => ipcRenderer.invoke("models:list"),
   setModel: (model) => ipcRenderer.invoke("model:set", model),
   getActionsContext: () => ipcRenderer.invoke("actions:context"),
+  replyQuestion: (payload) => ipcRenderer.invoke("question:reply", payload),
+  rejectQuestion: (requestID) => ipcRenderer.invoke("question:reject", requestID),
+  onQuestion: (cb) => ipcRenderer.on("chat:question", (_e, payload) => cb(payload)),
 
   onSlideReady: (cb) => ipcRenderer.on("slide:ready", (_e, url) => cb(url)),
   onStatus: (cb) => ipcRenderer.on("shell:status", (_e, payload) => cb(payload)),

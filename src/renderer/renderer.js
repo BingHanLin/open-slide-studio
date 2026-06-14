@@ -104,6 +104,17 @@ const ACTION_LABELS = {
   ja: { "create-slide": "新しいスライド", "apply-comments": "コメントを反映", "create-theme": "テーマを作成" },
 };
 
+// Question-card UI strings per locale.
+const QUESTION_UI = {
+  "zh-TW": { submit: "送出回答", next: "下一題", awaiting: "等待你選擇…", custom: "或輸入自訂…" },
+  "zh-CN": { submit: "提交回答", next: "下一题", awaiting: "等待你选择…", custom: "或输入自定义…" },
+  en: { submit: "Submit", next: "Next", awaiting: "Waiting for your choice…", custom: "or type a custom answer…" },
+  ja: { submit: "送信", next: "次へ", awaiting: "選択をお待ちしています…", custom: "カスタム入力…" },
+};
+function qui() {
+  return QUESTION_UI[lang] || QUESTION_UI.en;
+}
+
 // Placeholder hints per skill — shown in the empty input while that action is armed.
 const SKILL_PLACEHOLDERS = {
   "zh-TW": {
@@ -173,11 +184,14 @@ function normalizeLocale(raw) {
 }
 
 // ---- chat ----
-let activeBubble = null;
 let activeActivity = null;
 let activityTextEl = null;
 let activityTimer = null;
-let streamed = false;
+let processing = false;
+// Bubbles for the in-flight turn, keyed by the agent message part id, created
+// lazily on first content so there's never an empty placeholder, and appended
+// in arrival order so they interleave correctly with question cards.
+let turnParts = new Map();
 
 function addMessage(role, text) {
   const div = document.createElement("div");
@@ -190,6 +204,41 @@ function addMessage(role, text) {
 
 function scrollToEnd() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// Minimal, safe markdown → HTML (escapes first, only emits our own tags).
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+function renderMarkdown(src) {
+  const blocks = [];
+  src = String(src).replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, _lang, code) => {
+    blocks.push(`<pre><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`);
+    return ` ${blocks.length - 1} `;
+  });
+  src = escapeHtml(src);
+  src = src.replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`);
+  src = src.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  src = src.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  src = src.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, "$1"); // links → label text (no navigation)
+  const lines = src.split(/\r?\n/);
+  let html = "", inUl = false, inOl = false;
+  const close = () => { if (inUl) { html += "</ul>"; inUl = false; } if (inOl) { html += "</ol>"; inOl = false; } };
+  for (const line of lines) {
+    let m;
+    if ((m = line.match(/^#{1,6}\s+(.*)/))) { close(); html += `<div class="md-h">${m[1]}</div>`; }
+    else if ((m = line.match(/^\s*[-*]\s+(.*)/))) { if (!inUl) { close(); html += "<ul>"; inUl = true; } html += `<li>${m[1]}</li>`; }
+    else if ((m = line.match(/^\s*\d+\.\s+(.*)/))) { if (!inOl) { close(); html += "<ol>"; inOl = true; } html += `<li>${m[1]}</li>`; }
+    else if (line.trim() === "") { close(); }
+    else { close(); html += `<div>${line}</div>`; }
+  }
+  close();
+  return html.replace(/ (\d+) /g, (_m, i) => (blocks[+i] !== undefined ? blocks[+i] : _m));
+}
+function addAgentMarkdown(text) {
+  const el = addMessage("agent", "");
+  el.innerHTML = renderMarkdown(text);
+  return el;
 }
 
 // A live "agent is working" line: status text + bouncing dots + elapsed timer.
@@ -236,7 +285,6 @@ inputEl.addEventListener("input", autoGrow);
 // shown in the waiting area; it only becomes a user bubble once the agent
 // actually picks it up.
 const queue = [];
-let processing = false;
 
 function queueText(item) {
   return item.skill
@@ -285,19 +333,21 @@ async function pump() {
   addMessage("user", shown);
   updateSuggestions();
 
-  activeBubble = addMessage("agent", "");
+  // No placeholder bubble — agent bubbles are created lazily on first content.
+  turnParts = new Map();
   activeActivity = startActivity(t.making);
-  streamed = false;
 
   try {
     const reply = await window.api.sendMessage({ text: item.text, skill: item.skill });
-    if (!streamed) activeBubble.textContent = reply?.text || t.done;
+    // Fallback only if nothing streamed into a bubble this turn.
+    if (turnParts.size === 0) {
+      const txt = (reply?.text || "").trim();
+      if (txt) addAgentMarkdown(txt);
+    }
   } catch (err) {
-    activeBubble.textContent = t.sendError(err.message);
+    addAgentMarkdown(t.sendError(err.message));
   } finally {
     stopActivity();
-    if (activeBubble && !activeBubble.textContent) activeBubble.remove();
-    activeBubble = null;
     scrollToEnd();
   }
 
@@ -333,11 +383,17 @@ window.api.onStatus((payload) => {
   if (payload && payload.error) showError(payload.text);
 });
 
-// Streaming assistant text — replace the bubble contents as it grows.
-window.api.onStream(({ text }) => {
-  if (!activeBubble) return;
-  streamed = true;
-  activeBubble.textContent = text;
+// Streaming assistant text — one bubble per message part, created lazily on
+// first content and rendered as markdown.
+window.api.onStream(({ id, text }) => {
+  if (!processing) return;
+  let el = turnParts.get(id);
+  if (!el) {
+    el = addMessage("agent", "");
+    turnParts.set(id, el);
+  }
+  el.innerHTML = renderMarkdown(text);
+  if (activeActivity) messagesEl.appendChild(activeActivity); // keep status last
   scrollToEnd();
 });
 
@@ -356,6 +412,142 @@ window.api.onActivity((payload) => {
   }
   activityTextEl.textContent = text;
   scrollToEnd();
+});
+
+// Interactive question card — paginated: one question per page, Prev/Next, and
+// Submit on the last page. Answering POSTs back to opencode to unblock the turn.
+window.api.onQuestion(({ requestID, questions }) => {
+  if (activityTextEl) activityTextEl.textContent = qui().awaiting;
+
+  const card = document.createElement("div");
+  card.className = "qcard";
+  const selections = questions.map(() => new Set()); // selected labels per question
+  const customVals = questions.map(() => ""); // custom text per question
+  let page = 0;
+
+  const progress = document.createElement("div");
+  progress.className = "qprogress";
+  const body = document.createElement("div");
+  body.className = "qbody";
+  const nav = document.createElement("div");
+  nav.className = "qnav";
+  const prev = document.createElement("button");
+  prev.className = "qnavbtn";
+  prev.textContent = "‹";
+  const next = document.createElement("button");
+  next.className = "qnavbtn primary";
+  nav.append(prev, next);
+  card.append(progress, body, nav);
+
+  const answered = (i) => selections[i].size > 0 || customVals[i].trim();
+  const isLast = () => page === questions.length - 1;
+
+  function renderPage() {
+    const q = questions[page];
+    progress.textContent = `${page + 1} / ${questions.length}`;
+    body.innerHTML = "";
+    const qt = document.createElement("div");
+    qt.className = "qtext";
+    qt.textContent = q.question;
+    body.appendChild(qt);
+
+    const opts = document.createElement("div");
+    opts.className = "qopts";
+    q.options.forEach((o) => {
+      const btn = document.createElement("button");
+      btn.className = "qopt" + (selections[page].has(o.label) ? " sel" : "");
+      const lab = document.createElement("div");
+      lab.className = "qlabel";
+      lab.textContent = o.label;
+      btn.appendChild(lab);
+      if (o.description) {
+        const d = document.createElement("div");
+        d.className = "qdesc";
+        d.textContent = o.description;
+        btn.appendChild(d);
+      }
+      btn.addEventListener("click", () => {
+        if (q.multiple) {
+          selections[page].has(o.label) ? selections[page].delete(o.label) : selections[page].add(o.label);
+        } else {
+          selections[page].clear();
+          selections[page].add(o.label);
+        }
+        renderPage();
+      });
+      opts.appendChild(btn);
+    });
+    body.appendChild(opts);
+
+    if (q.custom) {
+      const inp = document.createElement("input");
+      inp.className = "qcustom";
+      inp.placeholder = qui().custom;
+      inp.value = customVals[page];
+      inp.addEventListener("input", () => {
+        customVals[page] = inp.value;
+        next.disabled = !answered(page);
+      });
+      body.appendChild(inp);
+    }
+
+    prev.style.visibility = page === 0 ? "hidden" : "visible";
+    next.textContent = isLast() ? qui().submit : qui().next;
+    next.classList.toggle("submit", isLast());
+    next.disabled = !answered(page);
+    if (activeActivity) messagesEl.appendChild(activeActivity); // keep status last
+    scrollToEnd();
+  }
+
+  prev.addEventListener("click", () => {
+    if (page > 0) {
+      page--;
+      renderPage();
+    }
+  });
+  next.addEventListener("click", async () => {
+    if (!answered(page)) return;
+    if (!isLast()) {
+      page++;
+      renderPage();
+      return;
+    }
+    // submit
+    const answers = questions.map((q, i) => {
+      const arr = Array.from(selections[i]);
+      if (customVals[i].trim()) arr.push(customVals[i].trim());
+      return arr;
+    });
+    nav.remove();
+    body.remove();
+    progress.remove();
+    card.classList.add("answered");
+    const sum = document.createElement("div");
+    sum.className = "qsummary";
+    questions.forEach((q, i) => {
+      const row = document.createElement("div");
+      row.className = "qsumrow";
+      const h = document.createElement("span");
+      h.className = "qsumh";
+      h.textContent = q.header || q.question.slice(0, 16);
+      const v = document.createElement("span");
+      v.className = "qsumv";
+      v.textContent = [...selections[i], customVals[i].trim()].filter(Boolean).join(", ");
+      row.append(h, v);
+      sum.appendChild(row);
+    });
+    card.appendChild(sum);
+    if (activityTextEl) activityTextEl.textContent = t.making;
+    if (activeActivity) messagesEl.appendChild(activeActivity);
+    try {
+      await window.api.replyQuestion({ requestID, answers });
+    } catch (e) {
+      showError(e.message);
+    }
+  });
+
+  messagesEl.appendChild(card);
+  renderPage();
 });
 
 // ---- follow open-slide's theme + language ----
