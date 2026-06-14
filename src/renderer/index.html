@@ -24,8 +24,20 @@
       /* ---- left: Claude-style chat ---- */
       #chat { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); overflow: hidden; min-width: 0; }
       #chat header { padding: 8px 8px 0; display: flex; justify-content: flex-end; }
-      .iconbtn { background: transparent; color: var(--muted); border: 0; border-radius: 6px; width: 30px; height: 30px; line-height: 1; font-size: 17px; cursor: pointer; flex: none; padding: 0; }
+      .iconbtn { background: transparent; color: var(--muted); border: 0; border-radius: 8px; width: 30px; height: 30px; line-height: 1; font-size: 17px; cursor: pointer; flex: none; padding: 0; display: inline-grid; place-items: center; }
       .iconbtn:hover { background: var(--user-bubble); color: var(--text); }
+
+      /* custom tooltips (replaces the native title attribute) */
+      .tip { position: relative; }
+      .tip::after {
+        content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 7px);
+        transform: translateX(-50%) translateY(3px); white-space: nowrap;
+        background: #2b2c31; color: #fff; font-size: 11px; padding: 4px 8px; border-radius: 6px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.3); opacity: 0; pointer-events: none; transition: opacity .12s ease, transform .12s ease; z-index: 80;
+      }
+      .tip:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .tip.below::after { bottom: auto; top: calc(100% + 7px); transform: translateX(-50%) translateY(-3px); }
+      .tip.below:hover::after { transform: translateX(-50%) translateY(0); }
       /* collapsed: hide everything but the expand handle */
       #expand { display: none; margin: 10px auto; }
       #app.collapsed #chat > header,
@@ -59,11 +71,24 @@
       .composer-box { display: flex; flex-direction: column; gap: 8px; background: var(--field); border: 1px solid var(--line); border-radius: 18px; padding: 12px 12px 10px 14px; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
       #input { resize: none; background: transparent; color: var(--text); border: 0; outline: none; font: inherit; font-size: 13px; line-height: 1.55; min-height: 58px; max-height: 200px; overflow-y: auto; }
       .composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-      .model-wrap { position: relative; display: inline-flex; align-items: center; }
-      #model { appearance: none; -webkit-appearance: none; background: transparent; border: 0; color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; padding: 3px 17px 3px 6px; border-radius: 6px; cursor: pointer; max-width: 220px; }
-      #model:hover { background: var(--user-bubble); color: var(--text); }
-      .model-wrap .chev { position: absolute; right: 5px; pointer-events: none; color: var(--muted); font-size: 9px; }
-      #send { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--text); color: var(--bg); display: grid; place-items: center; cursor: pointer; font-size: 16px; line-height: 1; }
+      /* custom model dropdown (replaces the native <select>) */
+      .model-wrap { position: relative; }
+      .model-btn { display: inline-flex; align-items: center; gap: 4px; max-width: 230px; background: transparent; border: 0; color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+      .model-btn:hover { background: var(--user-bubble); color: var(--text); }
+      .model-btn #model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .model-btn .chev { font-size: 9px; color: var(--muted); }
+      .menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 230px; max-height: 320px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.3); padding: 6px; z-index: 70; }
+      .menu[hidden] { display: none; }
+      .menu .group { font-size: 11px; color: var(--muted); padding: 8px 8px 3px; }
+      .menu .item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; border-radius: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+      .menu .item:hover { background: var(--user-bubble); }
+      .menu .item.selected { color: var(--accent); }
+      .menu .item .check { font-size: 12px; }
+      .menu::-webkit-scrollbar { width: 8px; }
+      .menu::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+      #send { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--text); color: var(--bg); display: grid; place-items: center; cursor: pointer; padding: 0; }
+      #send svg { width: 15px; height: 15px; display: block; }
       #send:disabled { opacity: .3; cursor: default; }
 
       /* ---- right: live slide view ---- */
@@ -78,9 +103,9 @@
   <body>
     <div id="app">
       <section id="chat">
-        <button id="expand" class="iconbtn" title="展開">›</button>
+        <button id="expand" class="iconbtn tip below" data-tip="展開">›</button>
         <header>
-          <button id="collapse" class="iconbtn" title="收合">‹</button>
+          <button id="collapse" class="iconbtn tip below" data-tip="收合">‹</button>
         </header>
         <div id="messages"></div>
         <div id="suggestions"></div>
@@ -90,10 +115,14 @@
             <textarea id="input" rows="3" placeholder="例如:做一份 5 頁、介紹我們新產品的簡報"></textarea>
             <div class="composer-toolbar">
               <div class="model-wrap">
-                <select id="model" title="選擇 AI 模型"></select>
-                <span class="chev">▾</span>
+                <button id="model-btn" class="model-btn tip" data-tip="選擇 AI 模型">
+                  <span id="model-name"></span><span class="chev">▾</span>
+                </button>
+                <div id="model-menu" class="menu" hidden></div>
               </div>
-              <button id="send" title="送出">↑</button>
+              <button id="send" class="tip" data-tip="送出">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4l13 8-13 8z" fill="currentColor"/></svg>
+              </button>
             </div>
           </div>
         </div>

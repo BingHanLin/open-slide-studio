@@ -3,7 +3,9 @@
 const messagesEl = document.getElementById("messages");
 const inputEl = document.getElementById("input");
 const sendEl = document.getElementById("send");
-const modelEl = document.getElementById("model");
+const modelBtn = document.getElementById("model-btn");
+const modelNameEl = document.getElementById("model-name");
+const modelMenu = document.getElementById("model-menu");
 const appEl = document.getElementById("app");
 const collapseEl = document.getElementById("collapse");
 const expandEl = document.getElementById("expand");
@@ -137,11 +139,11 @@ function applyLocale(locale) {
   lang = locale;
   t = I18N[lang];
   document.documentElement.lang = locale;
-  modelEl.title = t.modelTitle;
   updatePlaceholder();
-  sendEl.title = t.send;
-  collapseEl.title = BTN_TITLES[locale][0];
-  expandEl.title = BTN_TITLES[locale][1];
+  modelBtn.dataset.tip = t.modelTitle;
+  sendEl.dataset.tip = t.send;
+  collapseEl.dataset.tip = BTN_TITLES[locale][0];
+  expandEl.dataset.tip = BTN_TITLES[locale][1];
   if (placeholderEl.style.display !== "none") placeholderEl.textContent = t.previewLoading;
   // refresh action chips / active pill in the new language
   if (suggestionsEl.classList.contains("show")) renderSuggestions();
@@ -373,32 +375,75 @@ async function initActions() {
   updateSuggestions();
 }
 
-// ---- model dropdown ----
+// ---- custom model dropdown ----
+let modelGroups = [];
+let currentModelId = null;
+
+function modelNameOf(id) {
+  for (const g of modelGroups) for (const m of g.models) if (`${g.id}/${m.id}` === id) return m.name;
+  return id;
+}
+
+function renderModelMenu() {
+  modelMenu.innerHTML = "";
+  for (const g of modelGroups) {
+    const gh = document.createElement("div");
+    gh.className = "group";
+    gh.textContent = g.name;
+    modelMenu.appendChild(gh);
+    for (const m of g.models) {
+      const id = `${g.id}/${m.id}`;
+      const item = document.createElement("div");
+      item.className = "item" + (id === currentModelId ? " selected" : "");
+      const name = document.createElement("span");
+      name.textContent = m.name;
+      const check = document.createElement("span");
+      check.className = "check";
+      check.textContent = id === currentModelId ? "✓" : "";
+      item.append(name, check);
+      item.addEventListener("click", () => chooseModel(id));
+      modelMenu.appendChild(item);
+    }
+  }
+}
+
+function chooseModel(id) {
+  currentModelId = id;
+  window.api.setModel(id);
+  modelNameEl.textContent = modelNameOf(id);
+  closeModelMenu();
+}
+
+function openModelMenu() {
+  renderModelMenu();
+  modelMenu.hidden = false;
+}
+function closeModelMenu() {
+  modelMenu.hidden = true;
+}
+
+modelBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (modelMenu.hidden) openModelMenu();
+  else closeModelMenu();
+});
+document.addEventListener("click", (e) => {
+  if (!modelMenu.hidden && !modelMenu.contains(e.target) && !modelBtn.contains(e.target)) closeModelMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeModelMenu();
+});
+
 async function loadModels() {
   try {
     const { current, groups } = await window.api.listModels();
-    modelEl.innerHTML = "";
-    for (const g of groups) {
-      const og = document.createElement("optgroup");
-      og.label = g.name;
-      for (const m of g.models) {
-        const id = `${g.id}/${m.id}`;
-        const opt = document.createElement("option");
-        opt.value = id;
-        opt.textContent = m.name;
-        if (id === current) opt.selected = true;
-        og.appendChild(opt);
-      }
-      modelEl.appendChild(og);
-    }
+    modelGroups = groups;
+    currentModelId = current;
+    modelNameEl.textContent = modelNameOf(current);
   } catch (err) {
     showError(t.modelsError(err.message));
   }
 }
-
-modelEl.addEventListener("change", () => {
-  window.api.setModel(modelEl.value);
-});
 
 // ---- collapse / expand the agent panel ----
 function setCollapsed(collapsed) {
