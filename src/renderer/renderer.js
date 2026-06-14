@@ -592,7 +592,6 @@ function startSettingsSync() {
 
 // ---- empty-state action chips → skills ----
 let activeSkill = null;
-let actionContext = { hasComments: false };
 
 function actionLabel(skill) {
   const a = ACTIONS.find((x) => x.skill === skill);
@@ -653,10 +652,7 @@ function renderActionsMenu() {
     actionsMenu.appendChild(item);
   }
 }
-async function openActionsMenu() {
-  try {
-    actionContext = await window.api.getActionsContext(); // refresh (comments may now exist)
-  } catch {}
+function openActionsMenu() {
   renderActionsMenu();
   actionsMenu.hidden = false;
 }
@@ -675,10 +671,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeActionsMenu();
 });
 
-async function initActions() {
-  try {
-    actionContext = await window.api.getActionsContext();
-  } catch {}
+function initActions() {
   updateSuggestions();
 }
 

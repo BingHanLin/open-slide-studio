@@ -8,7 +8,6 @@ contextBridge.exposeInMainWorld("api", {
   sendMessage: (payload) => ipcRenderer.invoke("chat:send", payload),
   listModels: () => ipcRenderer.invoke("models:list"),
   setModel: (model) => ipcRenderer.invoke("model:set", model),
-  getActionsContext: () => ipcRenderer.invoke("actions:context"),
   replyQuestion: (payload) => ipcRenderer.invoke("question:reply", payload),
   rejectQuestion: (requestID) => ipcRenderer.invoke("question:reject", requestID),
   onQuestion: (cb) => ipcRenderer.on("chat:question", (_e, payload) => cb(payload)),

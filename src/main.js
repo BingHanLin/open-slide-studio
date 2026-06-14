@@ -385,24 +385,6 @@ async function handleRejectQuestion(_evt, requestID) {
   return { ok: true };
 }
 
-// ---- action context ---------------------------------------------------------
-
-// "apply-comments" only makes sense when the inspector left real markers in a
-// slide. Match the actual JSX-comment marker — {/* @slide-comment id="c-..." ... */}
-// — not slides that merely display the literal text (e.g. the tutorial deck).
-const COMMENT_MARKER = /\{\/\*\s*@slide-comment\s+id="c-/;
-function hasPendingComments() {
-  try {
-    const dir = path.join(slideDir, "slides");
-    if (!fs.existsSync(dir)) return false;
-    for (const id of fs.readdirSync(dir)) {
-      const f = path.join(dir, id, "index.tsx");
-      if (fs.existsSync(f) && COMMENT_MARKER.test(fs.readFileSync(f, "utf8"))) return true;
-    }
-  } catch {}
-  return false;
-}
-
 // ---- model selection --------------------------------------------------------
 
 // List the authenticated providers/models for the dropdown, grouped by provider.
@@ -456,7 +438,6 @@ app.whenReady().then(async () => {
   ipcMain.handle("chat:send", handleSend);
   ipcMain.handle("models:list", handleListModels);
   ipcMain.handle("model:set", handleSetModel);
-  ipcMain.handle("actions:context", () => ({ hasComments: hasPendingComments() }));
   ipcMain.handle("question:reply", handleReplyQuestion);
   ipcMain.handle("question:reject", handleRejectQuestion);
 
