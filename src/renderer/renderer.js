@@ -421,7 +421,12 @@ window.api.onSlideReady((url) => {
   frameEl.src = url;
   frameEl.style.display = "flex";
   placeholderEl.style.display = "none";
-  frameEl.addEventListener("dom-ready", startSettingsSync, { once: true });
+  frameEl.addEventListener("console-message", onSlideConsole); // event-driven locale/theme push
+  frameEl.addEventListener("dom-ready", () => {
+    syncSettings(); // robust full read on each (re)load (covers the bg-color theme fallback)
+    installSettingsWatcher(); // re-inject the live watcher (lost on a full reload)
+  });
+  setInterval(syncSettings, 5000); // slow safety net behind the event-driven path
 });
 
 // The status bar stays hidden; it flashes only for real errors, then auto-hides.
@@ -624,21 +629,62 @@ const READ_SETTINGS = `(function(){
   return JSON.stringify({locale:locale, theme:theme});
 })()`;
 
+function applySettings(locale, theme) {
+  const norm = normalizeLocale(locale);
+  if (norm) applyLocale(norm);
+  if (theme) applyTheme(theme);
+}
+
 async function syncSettings() {
   try {
     const json = await frameEl.executeJavaScript(READ_SETTINGS, true);
     const { locale, theme } = JSON.parse(json);
-    const norm = normalizeLocale(locale);
-    if (norm) applyLocale(norm);
-    if (theme) applyTheme(theme);
+    applySettings(locale, theme);
   } catch {
     /* webview not ready yet — next tick will retry */
   }
 }
 
-function startSettingsSync() {
-  syncSettings();
-  setInterval(syncSettings, 1500); // pick up live toggles in the open-slide UI
+// Event-driven sync: a watcher injected into open-slide reports locale/theme the
+// instant they change (theme via a MutationObserver on <html>; locale via a
+// localStorage.setItem hook + storage events) and pushes it back over the
+// webview's console channel — so toggles reflect immediately, without tight
+// polling. The slow safety poll above only backstops cases the watcher can't
+// observe (e.g. a theme inferred purely from background color).
+const SETTINGS_SENTINEL = "__OC_SETTINGS__";
+const INSTALL_WATCHER = `(function(){
+  if (window.__ocSettingsWatch) return;
+  window.__ocSettingsWatch = true;
+  var de = document.documentElement;
+  function read(){
+    var ls=function(k){try{return localStorage.getItem(k)}catch(e){return null}};
+    var locale = ls('open-slide:locale') || de.getAttribute('lang') || '';
+    var theme = de.getAttribute('data-theme')
+      || (de.classList.contains('dark')?'dark':(de.classList.contains('light')?'light':''));
+    return {locale:locale, theme:theme};
+  }
+  var last='';
+  function emit(){ var c=JSON.stringify(read()); if(c!==last){ last=c; console.log('${SETTINGS_SENTINEL}'+c); } }
+  new MutationObserver(emit).observe(de,{attributes:true,attributeFilter:['data-theme','class','lang']});
+  window.addEventListener('storage', function(e){ if(!e.key || e.key==='open-slide:locale') emit(); });
+  try {
+    var _set = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = function(k,v){ _set(k,v); if(k==='open-slide:locale') emit(); };
+  } catch(e){}
+  emit();
+})()`;
+
+function installSettingsWatcher() {
+  frameEl.executeJavaScript(INSTALL_WATCHER, true).catch(() => {});
+}
+
+function onSlideConsole(e) {
+  const msg = (e && e.message) || "";
+  if (msg.indexOf(SETTINGS_SENTINEL) !== 0) return;
+  try {
+    const { locale, theme } = JSON.parse(msg.slice(SETTINGS_SENTINEL.length));
+    applySettings(locale, theme);
+  } catch {}
 }
 
 // ---- empty-state action chips → skills ----
