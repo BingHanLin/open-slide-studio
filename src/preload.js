@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("api", {
   sendMessage: (payload) => ipcRenderer.invoke("chat:send", payload),
   listModels: () => ipcRenderer.invoke("models:list"),
   setModel: (model) => ipcRenderer.invoke("model:set", model),
+  appInfo: () => ipcRenderer.invoke("app:info"),
   authMethods: () => ipcRenderer.invoke("auth:methods"),
   authSetKey: (payload) => ipcRenderer.invoke("auth:setKey", payload),
   authOauthStart: (payload) => ipcRenderer.invoke("auth:oauthStart", payload),

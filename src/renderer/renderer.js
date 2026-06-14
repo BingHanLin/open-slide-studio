@@ -14,6 +14,7 @@ const authModal = document.getElementById("auth-modal");
 const authTitle = document.getElementById("auth-title");
 const authClose = document.getElementById("auth-close");
 const authBody = document.getElementById("auth-body");
+const sdkVerEl = document.getElementById("sdk-ver");
 const appEl = document.getElementById("app");
 const collapseEl = document.getElementById("collapse");
 const expandEl = document.getElementById("expand");
@@ -1160,6 +1161,14 @@ collapseEl.addEventListener("click", () => setCollapsed(true));
 expandEl.addEventListener("click", () => setCollapsed(false));
 setCollapsed(localStorage.getItem("panelCollapsed") === "1");
 
+async function loadAppInfo() {
+  try {
+    const { sdkVersion } = await window.api.appInfo();
+    if (sdkVersion) sdkVerEl.textContent = `opencode SDK v${sdkVersion}`;
+  } catch {}
+}
+
 loadModels();
+loadAppInfo();
 initActions();
 inputEl.focus();

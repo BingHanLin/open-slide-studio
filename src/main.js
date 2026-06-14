@@ -26,6 +26,15 @@ async function noTimeoutFetch(request) {
 const ROOT = path.join(__dirname, "..");
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, "config.json"), "utf8"));
 
+// Installed @opencode-ai/sdk version, surfaced as a small label in the panel.
+// (Its package.json blocks subpath require via "exports", so read the file.)
+let sdkVersion = "";
+try {
+  sdkVersion = JSON.parse(
+    fs.readFileSync(path.join(ROOT, "node_modules", "@opencode-ai", "sdk", "package.json"), "utf8")
+  ).version || "";
+} catch {}
+
 const slideDir = path.isAbsolute(config.slideProjectDir)
   ? config.slideProjectDir
   : path.join(ROOT, config.slideProjectDir);
@@ -178,10 +187,23 @@ async function startOpencode() {
   // permission lockdown travels with the server config (see config.json).
   // model is just the server default; each prompt sends activeModel explicitly.
   const serverConfig = { model: activeModel, ...(permission ? { permission } : {}) };
+  // Isolate this app's opencode footprint (auth.json, opencode.db, model cache,
+  // logs) into our own per-user data dir via the XDG base-dir vars opencode
+  // honors. Keeps the app self-contained: credentials and conversation history
+  // don't mix with — or get polluted by — any other opencode on the machine.
+  // opencode creates these dirs itself on first run.
+  const dataRoot = path.join(app.getPath("userData"), "opencode-data");
   opencodeProc = spawn(cmd, ["serve", `--hostname=${hostname}`, `--port=${port}`], {
     cwd: slideDir,
     shell: true, // Windows: resolves the exe / .cmd shim on PATH
-    env: { ...process.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(serverConfig) },
+    env: {
+      ...process.env,
+      OPENCODE_CONFIG_CONTENT: JSON.stringify(serverConfig),
+      XDG_DATA_HOME: path.join(dataRoot, "data"), // auth.json + opencode.db
+      XDG_CONFIG_HOME: path.join(dataRoot, "config"),
+      XDG_CACHE_HOME: path.join(dataRoot, "cache"), // models.json
+      XDG_STATE_HOME: path.join(dataRoot, "state"),
+    },
   });
 
   // The server prints "opencode server listening on <url>" once ready.
@@ -561,6 +583,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("model:set", handleSetModel);
   ipcMain.handle("question:reply", handleReplyQuestion);
   ipcMain.handle("question:reject", handleRejectQuestion);
+  ipcMain.handle("app:info", () => ({ sdkVersion }));
   ipcMain.handle("chat:new", handleNewConversation);
   ipcMain.handle("sessions:list", handleListSessions);
   ipcMain.handle("session:switch", handleSwitchSession);
