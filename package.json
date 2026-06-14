@@ -24,6 +24,7 @@
   "build": {
     "appId": "studio.openslide.app",
     "productName": "open-slide studio",
+    "artifactName": "${name}-Setup-${version}.${ext}",
     "icon": "build/icon",
     "publish": [
       {
