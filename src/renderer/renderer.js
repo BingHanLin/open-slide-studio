@@ -97,6 +97,30 @@ const ACTION_LABELS = {
   ja: { "create-slide": "新しいスライド", "apply-comments": "コメントを反映", "create-theme": "テーマを作成" },
 };
 
+// Placeholder hints per skill — shown in the empty input while that action is armed.
+const SKILL_PLACEHOLDERS = {
+  "zh-TW": {
+    "create-slide": "想做什麼主題的簡報?幾頁、給我重點…",
+    "apply-comments": "可直接送出套用註解,或補充想怎麼改…",
+    "create-theme": "描述想要的風格(配色、字體、感覺),或提供參考圖…",
+  },
+  "zh-CN": {
+    "create-slide": "想做什么主题的演示?几页、给我重点…",
+    "apply-comments": "可直接发送应用批注,或补充想怎么改…",
+    "create-theme": "描述想要的风格(配色、字体、感觉),或提供参考图…",
+  },
+  en: {
+    "create-slide": "What's the deck about? How many pages, key points…",
+    "apply-comments": "Send to apply your comments, or add notes on how…",
+    "create-theme": "Describe the style (colors, fonts, vibe), or share reference images…",
+  },
+  ja: {
+    "create-slide": "どんなテーマのスライド?ページ数や要点を…",
+    "apply-comments": "そのまま送信でコメント反映、または補足を…",
+    "create-theme": "希望のスタイル(配色・フォント・雰囲気)や参考画像を…",
+  },
+};
+
 // [collapse, expand] button tooltips per locale.
 const BTN_TITLES = {
   "zh-TW": ["收合", "展開"],
@@ -114,7 +138,7 @@ function applyLocale(locale) {
   t = I18N[lang];
   document.documentElement.lang = locale;
   modelEl.title = t.modelTitle;
-  inputEl.placeholder = t.placeholder;
+  updatePlaceholder();
   sendEl.title = t.send;
   collapseEl.title = BTN_TITLES[locale][0];
   expandEl.title = BTN_TITLES[locale][1];
@@ -320,16 +344,24 @@ function updateSuggestions() {
   if (empty) renderSuggestions();
 }
 
+// Empty-input placeholder follows the armed skill (or the default hint).
+function updatePlaceholder() {
+  const sp = SKILL_PLACEHOLDERS[lang] || SKILL_PLACEHOLDERS.en;
+  inputEl.placeholder = activeSkill ? sp[activeSkill] || t.placeholder : t.placeholder;
+}
+
 function selectAction(skill) {
   activeSkill = skill;
   pillLabelEl.textContent = actionLabel(skill);
   pillEl.style.display = "inline-flex";
+  updatePlaceholder();
   inputEl.focus();
 }
 
 function clearPill() {
   activeSkill = null;
   pillEl.style.display = "none";
+  updatePlaceholder();
 }
 
 pillXEl.addEventListener("click", clearPill);
