@@ -10,6 +10,10 @@ const expandEl = document.getElementById("expand");
 const frameEl = document.getElementById("frame");
 const placeholderEl = document.getElementById("placeholder");
 const statusEl = document.getElementById("statusbar");
+const suggestionsEl = document.getElementById("suggestions");
+const pillEl = document.getElementById("pill");
+const pillLabelEl = document.getElementById("pill-label");
+const pillXEl = document.getElementById("pill-x");
 
 // ---- i18n (UI text follows open-slide's language: en / zh-TW / zh-CN / ja) ----
 const I18N = {
@@ -79,6 +83,20 @@ const I18N = {
   },
 };
 
+// Empty-state action chips → open-slide skills (invoked via /skill-name).
+// `needs:"comments"` chips only appear when the inspector left pending comments.
+const ACTIONS = [
+  { skill: "create-slide", icon: "📊" },
+  { skill: "apply-comments", icon: "💬", needs: "comments" },
+  { skill: "create-theme", icon: "🎨" },
+];
+const ACTION_LABELS = {
+  "zh-TW": { "create-slide": "做一份新簡報", "apply-comments": "套用我的註解", "create-theme": "建立主題風格" },
+  "zh-CN": { "create-slide": "做一份新幻灯片", "apply-comments": "应用我的批注", "create-theme": "创建主题风格" },
+  en: { "create-slide": "New deck", "apply-comments": "Apply my comments", "create-theme": "Create a theme" },
+  ja: { "create-slide": "新しいスライド", "apply-comments": "コメントを反映", "create-theme": "テーマを作成" },
+};
+
 // [collapse, expand] button tooltips per locale.
 const BTN_TITLES = {
   "zh-TW": ["收合", "展開"],
@@ -101,6 +119,9 @@ function applyLocale(locale) {
   collapseEl.title = BTN_TITLES[locale][0];
   expandEl.title = BTN_TITLES[locale][1];
   if (placeholderEl.style.display !== "none") placeholderEl.textContent = t.previewLoading;
+  // refresh action chips / active pill in the new language
+  if (suggestionsEl.classList.contains("show")) renderSuggestions();
+  if (activeSkill) pillLabelEl.textContent = actionLabel(activeSkill);
 }
 
 function applyTheme(theme) {
@@ -147,11 +168,17 @@ inputEl.addEventListener("input", autoGrow);
 
 async function send() {
   const text = inputEl.value.trim();
-  if (!text) return;
+  const skill = activeSkill;
+  if (!text && !skill) return;
   inputEl.value = "";
   autoGrow();
   sendEl.disabled = true;
-  addMessage("user", text);
+
+  // user bubble shows the friendly action label (if any) + text
+  const shown = skill ? (text ? `${actionLabel(skill)}\n${text}` : actionLabel(skill)) : text;
+  addMessage("user", shown);
+  clearPill();
+  updateSuggestions();
 
   // Assistant bubble fills in via chat:stream; activity line shows friendly
   // localized progress and is removed when the turn ends.
@@ -160,7 +187,7 @@ async function send() {
   streamed = false;
 
   try {
-    const reply = await window.api.sendMessage(text);
+    const reply = await window.api.sendMessage({ text, skill });
     if (!streamed) activeBubble.textContent = reply?.text || t.done;
   } catch (err) {
     activeBubble.textContent = t.sendError(err.message);
@@ -265,6 +292,55 @@ function startSettingsSync() {
   setInterval(syncSettings, 1500); // pick up live toggles in the open-slide UI
 }
 
+// ---- empty-state action chips → skills ----
+let activeSkill = null;
+let actionContext = { hasComments: false };
+
+function actionLabel(skill) {
+  const a = ACTIONS.find((x) => x.skill === skill);
+  const lbl = (ACTION_LABELS[lang] || ACTION_LABELS.en)[skill] || skill;
+  return a ? `${a.icon} ${lbl}` : lbl;
+}
+
+function renderSuggestions() {
+  suggestionsEl.innerHTML = "";
+  for (const a of ACTIONS) {
+    if (a.needs === "comments" && !actionContext.hasComments) continue;
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = actionLabel(a.skill);
+    chip.addEventListener("click", () => selectAction(a.skill));
+    suggestionsEl.appendChild(chip);
+  }
+}
+
+function updateSuggestions() {
+  const empty = messagesEl.children.length === 0;
+  suggestionsEl.classList.toggle("show", empty);
+  if (empty) renderSuggestions();
+}
+
+function selectAction(skill) {
+  activeSkill = skill;
+  pillLabelEl.textContent = actionLabel(skill);
+  pillEl.style.display = "inline-flex";
+  inputEl.focus();
+}
+
+function clearPill() {
+  activeSkill = null;
+  pillEl.style.display = "none";
+}
+
+pillXEl.addEventListener("click", clearPill);
+
+async function initActions() {
+  try {
+    actionContext = await window.api.getActionsContext();
+  } catch {}
+  updateSuggestions();
+}
+
 // ---- model dropdown ----
 async function loadModels() {
   try {
@@ -304,4 +380,5 @@ expandEl.addEventListener("click", () => setCollapsed(false));
 setCollapsed(localStorage.getItem("panelCollapsed") === "1");
 
 loadModels();
+initActions();
 inputEl.focus();

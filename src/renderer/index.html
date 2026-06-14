@@ -43,6 +43,17 @@
       #messages::-webkit-scrollbar { width: 8px; }
       #messages::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
+      /* empty-state suggestion chips (shown only when conversation is empty) */
+      #suggestions { display: none; flex-wrap: wrap; gap: 8px; padding: 0 14px 10px; }
+      #suggestions.show { display: flex; }
+      #app.collapsed #suggestions { display: none; }
+      .chip { background: var(--field); border: 1px solid var(--line); border-radius: 16px; padding: 7px 12px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+      .chip:hover { background: var(--user-bubble); }
+      /* selected-action pill inside the composer */
+      .pill { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; background: var(--user-bubble); color: var(--text); border-radius: 12px; padding: 3px 6px 3px 10px; font-size: 12px; }
+      .pill .x { cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; }
+      .pill .x:hover { color: var(--text); }
+
       /* composer: Claude-style — large input, toolbar with model (left) + send (right) */
       #composer { padding: 8px 14px 16px; }
       .composer-box { display: flex; flex-direction: column; gap: 8px; background: var(--field); border: 1px solid var(--line); border-radius: 18px; padding: 12px 12px 10px 14px; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
@@ -72,8 +83,10 @@
           <button id="collapse" class="iconbtn" title="收合">‹</button>
         </header>
         <div id="messages"></div>
+        <div id="suggestions"></div>
         <div id="composer">
           <div class="composer-box">
+            <div id="pill" class="pill" style="display:none"><span id="pill-label"></span><span class="x" id="pill-x">×</span></div>
             <textarea id="input" rows="3" placeholder="例如:做一份 5 頁、介紹我們新產品的簡報"></textarea>
             <div class="composer-toolbar">
               <div class="model-wrap">

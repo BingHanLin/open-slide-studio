@@ -5,9 +5,10 @@ const { contextBridge, ipcRenderer } = require("electron");
 // Minimal, locked-down bridge. The renderer can chat and listen for shell
 // status/events, nothing else — no direct node/fs access.
 contextBridge.exposeInMainWorld("api", {
-  sendMessage: (text) => ipcRenderer.invoke("chat:send", text),
+  sendMessage: (payload) => ipcRenderer.invoke("chat:send", payload),
   listModels: () => ipcRenderer.invoke("models:list"),
   setModel: (model) => ipcRenderer.invoke("model:set", model),
+  getActionsContext: () => ipcRenderer.invoke("actions:context"),
 
   onSlideReady: (cb) => ipcRenderer.on("slide:ready", (_e, url) => cb(url)),
   onStatus: (cb) => ipcRenderer.on("shell:status", (_e, payload) => cb(payload)),

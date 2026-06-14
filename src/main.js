@@ -278,24 +278,32 @@ async function ensureSession() {
 
 // Chat send: route the user's natural-language message to the agent. Live output
 // is driven by subscribeEvents(); the returned text is only a fallback in case
-// no streaming text part arrived.
-async function handleSend(_evt, text) {
+// no streaming text part arrived. When a skill action is chosen, invoke it via
+// opencode's command system (the `/skill-name` mechanism) instead of a plain prompt.
+async function handleSend(_evt, { text, skill } = {}) {
   await ensureSession();
   currentAssistantMsg = null;
   announcedTools.clear();
 
-  const [providerID, ...rest] = String(activeModel).split("/");
-  const modelID = rest.join("/");
-  const result = unwrap(
-    await client.session.prompt({
-      path: { id: sessionId },
-      query: { directory: slideDir },
-      body: {
-        model: { providerID, modelID },
-        parts: [{ type: "text", text }],
-      },
-    })
-  );
+  let result;
+  if (skill) {
+    result = unwrap(
+      await client.session.command({
+        path: { id: sessionId },
+        query: { directory: slideDir },
+        body: { command: skill, arguments: text || "", model: activeModel },
+      })
+    );
+  } else {
+    const [providerID, ...rest] = String(activeModel).split("/");
+    result = unwrap(
+      await client.session.prompt({
+        path: { id: sessionId },
+        query: { directory: slideDir },
+        body: { model: { providerID, modelID: rest.join("/") }, parts: [{ type: "text", text }] },
+      })
+    );
+  }
   const parts = result?.parts || result?.message?.parts || [];
   const replyText = parts
     .filter((p) => p.type === "text" && p.text)
@@ -303,6 +311,24 @@ async function handleSend(_evt, text) {
     .join("\n")
     .trim();
   return { text: replyText };
+}
+
+// ---- action context ---------------------------------------------------------
+
+// "apply-comments" only makes sense when the inspector left real markers in a
+// slide. Match the actual JSX-comment marker — {/* @slide-comment id="c-..." ... */}
+// — not slides that merely display the literal text (e.g. the tutorial deck).
+const COMMENT_MARKER = /\{\/\*\s*@slide-comment\s+id="c-/;
+function hasPendingComments() {
+  try {
+    const dir = path.join(slideDir, "slides");
+    if (!fs.existsSync(dir)) return false;
+    for (const id of fs.readdirSync(dir)) {
+      const f = path.join(dir, id, "index.tsx");
+      if (fs.existsSync(f) && COMMENT_MARKER.test(fs.readFileSync(f, "utf8"))) return true;
+    }
+  } catch {}
+  return false;
 }
 
 // ---- model selection --------------------------------------------------------
@@ -358,6 +384,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("chat:send", handleSend);
   ipcMain.handle("models:list", handleListModels);
   ipcMain.handle("model:set", handleSetModel);
+  ipcMain.handle("actions:context", () => ({ hasComments: hasPendingComments() }));
 
   createWindow();
   startSlideServer();
