@@ -68,21 +68,11 @@ npm start
 In dev the slide dev server is started via its npm script; when packaged it runs
 through Electron's own bundled Node, which is why the installed app needs no Node.
 
-## Build the installer
+### Configure
 
-```bash
-npm run dist            # → dist/open-slide studio Setup <version>.exe  (NSIS, Windows)
-npm run pack            # → dist/win-unpacked/  (unpacked app, no installer — faster)
-```
-
-A `slides/` project must be scaffolded first (`npm run init-slides`); the build's
-`afterPack` hook bundles it — including its `node_modules` (Vite, the open-slide
-CLI, the esbuild/rollup native binaries) — as the template that first launch
-seeds. The opencode binary is asar-unpacked so it can be spawned at runtime.
-
-## Configure
-
-Machine-specific settings live in `config.json`:
+These settings live in `config.json` inside the app bundle, so they only matter
+when running or building from source — installed users configure everything
+in-app (model provider in the connect panel, model choice persisted separately).
 
 - `slideProjectDir` — where the open-slide project is (default `slides`; resolved
   against the writable data dir when installed, the project root in dev)
@@ -94,3 +84,15 @@ Machine-specific settings live in `config.json`:
   slide deck, shell disabled) so it's safe for non-engineers
 - `opencode.port` — server port (default `4099`; the slide dev server port is
   auto-detected from Vite's output since it's dynamic)
+
+## Build the installer
+
+```bash
+npm run dist            # → dist/open-slide studio Setup <version>.exe  (NSIS, Windows)
+npm run pack            # → dist/win-unpacked/  (unpacked app, no installer — faster)
+```
+
+A `slides/` project must be scaffolded first (`npm run init-slides`); the build's
+`afterPack` hook bundles it — including its `node_modules` (Vite, the open-slide
+CLI, the esbuild/rollup native binaries) — as the template that first launch
+seeds. The opencode binary is asar-unpacked so it can be spawned at runtime.
