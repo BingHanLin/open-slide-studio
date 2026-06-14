@@ -6,6 +6,8 @@ const sendEl = document.getElementById("send");
 const modelBtn = document.getElementById("model-btn");
 const modelNameEl = document.getElementById("model-name");
 const modelMenu = document.getElementById("model-menu");
+const actionsBtn = document.getElementById("actions-btn");
+const actionsMenu = document.getElementById("actions-menu");
 const appEl = document.getElementById("app");
 const collapseEl = document.getElementById("collapse");
 const expandEl = document.getElementById("expand");
@@ -157,6 +159,7 @@ function applyLocale(locale) {
   document.documentElement.lang = locale;
   updatePlaceholder();
   modelBtn.dataset.tip = t.modelTitle;
+  actionsBtn.dataset.tip = { "zh-TW": "動作", "zh-CN": "动作", en: "Actions", ja: "アクション" }[locale] || "Actions";
   sendEl.dataset.tip = t.send;
   collapseEl.dataset.tip = BTN_TITLES[locale][0];
   expandEl.dataset.tip = BTN_TITLES[locale][1];
@@ -637,6 +640,43 @@ function clearPill() {
 }
 
 pillXEl.addEventListener("click", clearPill);
+
+// "+" actions menu — same skills as the empty-state chips, available any time.
+function renderActionsMenu() {
+  actionsMenu.innerHTML = "";
+  for (const a of ACTIONS) {
+    if (a.needs === "comments" && !actionContext.hasComments) continue;
+    const item = document.createElement("div");
+    item.className = "item";
+    item.textContent = actionLabel(a.skill);
+    item.addEventListener("click", () => {
+      selectAction(a.skill);
+      closeActionsMenu();
+    });
+    actionsMenu.appendChild(item);
+  }
+}
+async function openActionsMenu() {
+  try {
+    actionContext = await window.api.getActionsContext(); // refresh (comments may now exist)
+  } catch {}
+  renderActionsMenu();
+  actionsMenu.hidden = false;
+}
+function closeActionsMenu() {
+  actionsMenu.hidden = true;
+}
+actionsBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (actionsMenu.hidden) openActionsMenu();
+  else closeActionsMenu();
+});
+document.addEventListener("click", (e) => {
+  if (!actionsMenu.hidden && !actionsMenu.contains(e.target) && !actionsBtn.contains(e.target)) closeActionsMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeActionsMenu();
+});
 
 async function initActions() {
   try {

@@ -120,6 +120,9 @@
       .composer-box { display: flex; flex-direction: column; gap: 8px; background: var(--field); border: 1px solid var(--line); border-radius: 18px; padding: 12px 12px 10px 14px; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
       #input { resize: none; background: transparent; color: var(--text); border: 0; outline: none; font: inherit; font-size: 13px; line-height: 1.55; min-height: 58px; max-height: 200px; overflow-y: auto; }
       .composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .toolbar-left { display: flex; align-items: center; gap: 2px; min-width: 0; }
+      .actions-wrap { position: relative; }
+      #actions-btn { font-size: 19px; }
       /* custom model dropdown (replaces the native <select>) */
       .model-wrap { position: relative; }
       .model-btn { display: inline-flex; align-items: center; gap: 4px; max-width: 230px; background: transparent; border: 0; color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
@@ -164,11 +167,17 @@
             <div id="pill" class="pill" style="display:none"><span id="pill-label"></span><span class="x" id="pill-x">×</span></div>
             <textarea id="input" rows="3" placeholder="例如:做一份 5 頁、介紹我們新產品的簡報"></textarea>
             <div class="composer-toolbar">
-              <div class="model-wrap">
-                <button id="model-btn" class="model-btn tip" data-tip="選擇 AI 模型">
-                  <span id="model-name"></span><span class="chev">▾</span>
-                </button>
-                <div id="model-menu" class="menu" hidden></div>
+              <div class="toolbar-left">
+                <div class="actions-wrap">
+                  <button id="actions-btn" class="iconbtn tip" data-tip="動作">＋</button>
+                  <div id="actions-menu" class="menu" hidden></div>
+                </div>
+                <div class="model-wrap">
+                  <button id="model-btn" class="model-btn tip" data-tip="選擇 AI 模型">
+                    <span id="model-name"></span><span class="chev">▾</span>
+                  </button>
+                  <div id="model-menu" class="menu" hidden></div>
+                </div>
               </div>
               <button id="send" class="tip" data-tip="送出">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4l13 8-13 8z" fill="currentColor"/></svg>
