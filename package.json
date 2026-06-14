@@ -15,12 +15,38 @@
   "scripts": {
     "start": "electron .",
     "init-slides": "npx @open-slide/cli init slides",
-    "gen-icon": "electron tools/gen-icon.js"
+    "gen-icon": "electron tools/gen-icon.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win"
   },
   "build": {
     "appId": "studio.openslide.app",
     "productName": "open-slide studio",
-    "icon": "build/icon"
+    "icon": "build/icon",
+    "files": [
+      "**/*",
+      "!slides/**",
+      "!tools/**",
+      "!build/icon.svg",
+      "!*.mjs",
+      "!screenshot.png",
+      "!crop.png",
+      "!user-settings.json",
+      "!node_modules/opencode-windows-*/**",
+      "!node_modules/opencode-darwin-*/**",
+      "!node_modules/opencode-linux-*/**"
+    ],
+    "asarUnpack": [
+      "node_modules/opencode-ai/bin/**"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.17.4",
@@ -28,6 +54,7 @@
     "undici": "^7.27.2"
   },
   "devDependencies": {
-    "electron": "^42.4.0"
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3"
   }
 }

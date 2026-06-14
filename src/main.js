@@ -26,6 +26,12 @@ async function noTimeoutFetch(request) {
 const ROOT = path.join(__dirname, "..");
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, "config.json"), "utf8"));
 
+// Read-only app code lives under ROOT (an asar archive once packaged). Anything
+// we write at runtime — the scaffolded slide deck, user settings — must live in
+// a writable location instead: the project root in dev, the per-user data dir
+// when installed.
+const DATA_ROOT = app.isPackaged ? app.getPath("userData") : ROOT;
+
 // Installed opencode versions, surfaced as a small label in the panel. (Their
 // package.json blocks subpath require via "exports", so read the file directly.)
 function readPkgVersion(...parts) {
@@ -40,11 +46,11 @@ const sdkVersion = readPkgVersion("@opencode-ai", "sdk");
 
 const slideDir = path.isAbsolute(config.slideProjectDir)
   ? config.slideProjectDir
-  : path.join(ROOT, config.slideProjectDir);
+  : path.join(DATA_ROOT, config.slideProjectDir);
 
 // User-picked model persists here (separate from config.json so we never
 // rewrite the user's hand-edited config).
-const SETTINGS_PATH = path.join(ROOT, "user-settings.json");
+const SETTINGS_PATH = path.join(DATA_ROOT, "user-settings.json");
 function loadSettings() {
   try {
     return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8"));
@@ -184,6 +190,9 @@ async function startOpencode() {
   // root (NOT the slideDir cwd we spawn in).
   let bin = config.opencode.bin || "opencode";
   if (/[\\/]/.test(bin) && !path.isAbsolute(bin)) bin = path.join(ROOT, bin);
+  // The bundled binary is asar-unpacked (it can't be spawned from inside the
+  // archive); point at the on-disk copy electron-builder extracts alongside it.
+  if (app.isPackaged) bin = bin.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
   const cmd = /\s/.test(bin) ? `"${bin}"` : bin; // quote paths with spaces under shell
   const { hostname, port, permission } = config.opencode;
 
