@@ -28,8 +28,9 @@
       .iconbtn:hover { background: var(--user-bubble); color: var(--text); }
       .iconbtn:disabled { opacity: .35; cursor: default; }
       .iconbtn:disabled:hover { background: transparent; color: var(--muted); }
-      .sdk-ver { font-size: 10px; color: var(--muted); opacity: .6; user-select: text; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      #app.collapsed .sdk-ver { display: none; }
+      /* version label — pinned to the panel's bottom-left corner */
+      #version { padding: 0 14px 8px; font-size: 10px; color: var(--muted); opacity: .55; user-select: text; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #app.collapsed #version { display: none; }
 
       /* custom tooltips (replaces the native title attribute) */
       .tip { position: relative; }
@@ -206,7 +207,6 @@
             <button id="conv-btn" class="iconbtn tip below" data-tip="對話">🗨</button>
             <div id="conv-menu" class="menu menu-down" hidden></div>
           </div>
-          <span id="sdk-ver" class="sdk-ver"></span>
           <button id="collapse" class="iconbtn tip below" data-tip="收合">‹</button>
         </header>
         <div id="messages"></div>
@@ -235,6 +235,7 @@
             </div>
           </div>
         </div>
+        <div id="version" class="version"></div>
       </section>
       <section id="preview">
         <webview id="frame" style="display:none" disablewebsecurity></webview>

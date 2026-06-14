@@ -1,7 +1,7 @@
 "use strict";
 
 const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
@@ -26,14 +26,17 @@ async function noTimeoutFetch(request) {
 const ROOT = path.join(__dirname, "..");
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, "config.json"), "utf8"));
 
-// Installed @opencode-ai/sdk version, surfaced as a small label in the panel.
-// (Its package.json blocks subpath require via "exports", so read the file.)
-let sdkVersion = "";
-try {
-  sdkVersion = JSON.parse(
-    fs.readFileSync(path.join(ROOT, "node_modules", "@opencode-ai", "sdk", "package.json"), "utf8")
-  ).version || "";
-} catch {}
+// Installed opencode versions, surfaced as a small label in the panel. (Their
+// package.json blocks subpath require via "exports", so read the file directly.)
+function readPkgVersion(...parts) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, "node_modules", ...parts, "package.json"), "utf8")).version || "";
+  } catch {
+    return "";
+  }
+}
+const opencodeVersion = readPkgVersion("opencode-ai"); // the bundled runtime/server
+const sdkVersion = readPkgVersion("@opencode-ai", "sdk");
 
 const slideDir = path.isAbsolute(config.slideProjectDir)
   ? config.slideProjectDir
@@ -182,6 +185,12 @@ async function startOpencode() {
   if (/[\\/]/.test(bin) && !path.isAbsolute(bin)) bin = path.join(ROOT, bin);
   const cmd = /\s/.test(bin) ? `"${bin}"` : bin; // quote paths with spaces under shell
   const { hostname, port, permission } = config.opencode;
+
+  // A previous run killed mid-flight (e.g. Ctrl+C in the dev terminal) can orphan
+  // an opencode serve still holding our port, which would make this spawn exit(1)
+  // with EADDRINUSE. Free the port first — but ONLY by killing our own bundled
+  // binary on it, never an unrelated process.
+  reclaimPort(port, bin);
 
   status(`starting opencode serve (cwd=${slideDir})`);
   // permission lockdown travels with the server config (see config.json).
@@ -530,6 +539,23 @@ async function handleAuthOauthFinish(_evt, { id, method, code }) {
 
 // ---- model selection --------------------------------------------------------
 
+function modelAvailable(model, groups) {
+  const [pid, ...rest] = String(model).split("/");
+  const mid = rest.join("/");
+  return groups.some((g) => g.id === pid && g.models.some((m) => m.id === mid));
+}
+
+// Pick a usable model when the active one isn't available: prefer each
+// provider's declared default (in returned order), else the first model.
+function pickFallbackModel(groups, defaults) {
+  for (const g of groups) {
+    const def = defaults[g.id];
+    if (def && g.models.some((m) => m.id === def)) return `${g.id}/${def}`;
+  }
+  const g = groups[0];
+  return g && g.models[0] ? `${g.id}/${g.models[0].id}` : null;
+}
+
 // List the authenticated providers/models for the dropdown, grouped by provider.
 async function handleListModels() {
   await waitForClient();
@@ -542,6 +568,17 @@ async function handleListModels() {
       .map(([id, m]) => ({ id, name: m.name || id }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   }));
+  // The configured default (config.json) may point at a provider that isn't
+  // connected on a fresh, isolated store — leaving the app on a dead model.
+  // Fall back to an available one (e.g. OpenCode Zen's free default) so it
+  // always boots usable; the user can switch once they connect their provider.
+  if (groups.length && !modelAvailable(activeModel, groups)) {
+    const fallback = pickFallbackModel(groups, data.default || {});
+    if (fallback) {
+      activeModel = fallback;
+      status(`default model unavailable — falling back to ${fallback}`);
+    }
+  }
   return { current: activeModel, groups };
 }
 
@@ -583,7 +620,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("model:set", handleSetModel);
   ipcMain.handle("question:reply", handleReplyQuestion);
   ipcMain.handle("question:reject", handleRejectQuestion);
-  ipcMain.handle("app:info", () => ({ sdkVersion }));
+  ipcMain.handle("app:info", () => ({ opencodeVersion, sdkVersion }));
   ipcMain.handle("chat:new", handleNewConversation);
   ipcMain.handle("sessions:list", handleListSessions);
   ipcMain.handle("session:switch", handleSwitchSession);
@@ -611,19 +648,42 @@ app.whenReady().then(async () => {
 });
 
 // On Windows, shell:true wraps children in cmd.exe, so .kill() can orphan the
-// real exe (opencode.exe / vite). Kill the whole tree by PID.
+// real exe (opencode.exe / vite). Kill the whole tree by PID. Use spawnSync so
+// the kill completes before we exit on a signal (process.exit won't wait for an
+// async spawn).
 function killTree(proc) {
   if (!proc || proc.killed) return;
   try {
     if (process.platform === "win32") {
-      spawn("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { stdio: "ignore" });
+      spawnSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { stdio: "ignore" });
     } else {
       proc.kill();
     }
   } catch {}
 }
 
+// Before binding our port, kill any stale opencode that a crashed/interrupted
+// run left holding it — but ONLY our own bundled binary, matched by executable
+// path, never an unrelated process that happens to use the port.
+function reclaimPort(port, binPath) {
+  if (process.platform !== "win32" || !path.isAbsolute(binPath)) return;
+  try {
+    const ps =
+      `Get-CimInstance Win32_Process -Filter "Name='opencode.exe'" | ` +
+      `Where-Object { $_.CommandLine -like '*--port=${port}*' -and $_.ExecutablePath -eq '${binPath}' } | ` +
+      `ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
+    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps], {
+      stdio: "ignore",
+      timeout: 5000,
+    });
+    if (r.status === 0) status(`reclaimed port ${port} from a stale opencode (if any)`);
+  } catch {}
+}
+
+let didShutdown = false;
 function shutdown() {
+  if (didShutdown) return; // signal + app event can both fire
+  didShutdown = true;
   shuttingDown = true;
   killTree(slideProc);
   killTree(opencodeProc);
@@ -634,3 +694,13 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 app.on("before-quit", shutdown);
+
+// Terminal interrupts (Ctrl+C during `npm start`) don't reliably fire Electron's
+// quit events, which is how opencode gets orphaned. Catch the signals and clean
+// up the child processes ourselves before exiting.
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(sig, () => {
+    shutdown();
+    process.exit(0);
+  });
+}

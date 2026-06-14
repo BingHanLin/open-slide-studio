@@ -14,7 +14,7 @@ const authModal = document.getElementById("auth-modal");
 const authTitle = document.getElementById("auth-title");
 const authClose = document.getElementById("auth-close");
 const authBody = document.getElementById("auth-body");
-const sdkVerEl = document.getElementById("sdk-ver");
+const versionEl = document.getElementById("version");
 const appEl = document.getElementById("app");
 const collapseEl = document.getElementById("collapse");
 const expandEl = document.getElementById("expand");
@@ -1175,8 +1175,8 @@ setCollapsed(localStorage.getItem("panelCollapsed") === "1");
 
 async function loadAppInfo() {
   try {
-    const { sdkVersion } = await window.api.appInfo();
-    if (sdkVersion) sdkVerEl.textContent = `opencode SDK v${sdkVersion}`;
+    const { opencodeVersion } = await window.api.appInfo();
+    if (opencodeVersion) versionEl.textContent = `opencode v${opencodeVersion}`;
   } catch {}
 }
 
