@@ -1,0 +1,38 @@
+name: Release
+
+# Tag a commit `vX.Y.Z` (matching package.json "version") and push the tag to
+# build the Windows installer and publish it to a GitHub Release:
+#   npm version patch   # bumps package.json + creates the tag
+#   git push --follow-tags
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write # create the GitHub Release and upload the installer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Installs the app deps incl. the platform opencode binary (postinstall).
+      - run: npm ci
+
+      - run: npm test
+
+      # Scaffold + install the open-slide deck (slides/ is not committed); the
+      # afterPack hook bundles it as the self-contained template.
+      - name: Scaffold the slide deck
+        run: npx --yes @open-slide/cli init slides --use-npm --no-git --force
+
+      # Build the NSIS installer and publish it to the GitHub Release for this tag.
+      # Unsigned for now (no cert on the runner) — see README.
+      - name: Build & publish installer
+        run: npm run dist -- --publish always
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

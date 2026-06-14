@@ -14,8 +14,10 @@
   "bugs": "https://github.com/BingHanLin/open-slide-studio/issues",
   "scripts": {
     "start": "electron .",
-    "init-slides": "npx @open-slide/cli init slides",
+    "init-slides": "npx --yes @open-slide/cli init slides --use-npm --no-git",
     "gen-icon": "electron tools/gen-icon.js",
+    "test": "node --check src/main.js && node --check src/preload.js && node --check tools/gen-icon.js && node --check build/after-pack.js",
+    "test:e2e": "node smoke-test.mjs",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win"
   },
@@ -23,6 +25,13 @@
     "appId": "studio.openslide.app",
     "productName": "open-slide studio",
     "icon": "build/icon",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "BingHanLin",
+        "repo": "open-slide-studio"
+      }
+    ],
     "files": [
       "**/*",
       "!slides/**",
