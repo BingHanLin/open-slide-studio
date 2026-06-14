@@ -5,6 +5,9 @@ const inputEl = document.getElementById("input");
 const sendEl = document.getElementById("send");
 const modelEl = document.getElementById("model");
 const titleEl = document.getElementById("title");
+const appEl = document.getElementById("app");
+const collapseEl = document.getElementById("collapse");
+const expandEl = document.getElementById("expand");
 const frameEl = document.getElementById("frame");
 const placeholderEl = document.getElementById("placeholder");
 const statusEl = document.getElementById("statusbar");
@@ -77,6 +80,14 @@ const I18N = {
   },
 };
 
+// [collapse, expand] button tooltips per locale.
+const BTN_TITLES = {
+  "zh-TW": ["收合", "展開"],
+  "zh-CN": ["收起", "展开"],
+  en: ["Collapse", "Expand"],
+  ja: ["折りたたむ", "展開"],
+};
+
 let lang = "zh-TW"; // overwritten as soon as we read open-slide's setting
 let t = I18N[lang];
 
@@ -89,6 +100,8 @@ function applyLocale(locale) {
   modelEl.title = t.modelTitle;
   inputEl.placeholder = t.placeholder;
   sendEl.textContent = t.send;
+  collapseEl.title = BTN_TITLES[locale][0];
+  expandEl.title = BTN_TITLES[locale][1];
   if (placeholderEl.style.display !== "none") placeholderEl.textContent = t.previewLoading;
 }
 
@@ -264,6 +277,17 @@ async function loadModels() {
 modelEl.addEventListener("change", () => {
   window.api.setModel(modelEl.value);
 });
+
+// ---- collapse / expand the agent panel ----
+function setCollapsed(collapsed) {
+  appEl.classList.toggle("collapsed", collapsed);
+  try {
+    localStorage.setItem("panelCollapsed", collapsed ? "1" : "0");
+  } catch {}
+}
+collapseEl.addEventListener("click", () => setCollapsed(true));
+expandEl.addEventListener("click", () => setCollapsed(false));
+setCollapsed(localStorage.getItem("panelCollapsed") === "1");
 
 loadModels();
 inputEl.focus();
