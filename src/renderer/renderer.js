@@ -9,7 +9,9 @@ const modelMenu = document.getElementById("model-menu");
 const actionsBtn = document.getElementById("actions-btn");
 const actionsMenu = document.getElementById("actions-menu");
 const convBtn = document.getElementById("conv-btn");
-const convMenu = document.getElementById("conv-menu");
+const chatEl = document.getElementById("chat");
+const convList = document.getElementById("conv-list");
+const convTitleEl = document.getElementById("conv-ptitle");
 const authModal = document.getElementById("auth-modal");
 const authTitle = document.getElementById("auth-title");
 const authClose = document.getElementById("auth-close");
@@ -868,25 +870,26 @@ function confirmDeleteRow(itemEl, id) {
 }
 
 function renderConvMenu() {
-  convMenu.innerHTML = "";
+  convTitleEl.textContent = cui().tip;
+  convList.innerHTML = "";
 
   const neu = document.createElement("div");
-  neu.className = "item conv-new";
+  neu.className = "conv-new";
   neu.textContent = cui().neu;
   neu.addEventListener("click", newConversation);
-  convMenu.appendChild(neu);
+  convList.appendChild(neu);
 
   if (convSessions.length === 0) {
     const empty = document.createElement("div");
-    empty.className = "group";
+    empty.className = "conv-empty";
     empty.textContent = cui().empty;
-    convMenu.appendChild(empty);
+    convList.appendChild(empty);
     return;
   }
 
   for (const s of convSessions) {
     const item = document.createElement("div");
-    item.className = "item conv-item" + (s.current ? " selected" : "");
+    item.className = "conv-item" + (s.current ? " selected" : "");
 
     const main = document.createElement("div");
     main.className = "conv-main";
@@ -909,7 +912,7 @@ function renderConvMenu() {
     });
 
     item.append(main, del);
-    convMenu.appendChild(item);
+    convList.appendChild(item);
   }
 }
 
@@ -921,18 +924,18 @@ async function openConvMenu() {
     convSessions = [];
   }
   renderConvMenu();
-  convMenu.hidden = false;
+  chatEl.classList.add("conv-open");
 }
 function closeConvMenu() {
-  convMenu.hidden = true;
+  chatEl.classList.remove("conv-open");
+}
+function isConvOpen() {
+  return chatEl.classList.contains("conv-open");
 }
 convBtn.addEventListener("click", (e) => {
   e.stopPropagation();
-  if (convMenu.hidden) openConvMenu();
-  else closeConvMenu();
-});
-document.addEventListener("click", (e) => {
-  if (!convMenu.hidden && !convMenu.contains(e.target) && !convBtn.contains(e.target)) closeConvMenu();
+  if (isConvOpen()) closeConvMenu();
+  else openConvMenu();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeConvMenu();
