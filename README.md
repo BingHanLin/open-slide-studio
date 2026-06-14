@@ -94,17 +94,3 @@ Machine-specific settings live in `config.json`:
   slide deck, shell disabled) so it's safe for non-engineers
 - `opencode.port` — server port (default `4099`; the slide dev server port is
   auto-detected from Vite's output since it's dynamic)
-
-## App icon
-
-`build/icon.svg` is the source. Regenerate the raster assets (`icon.png`, `icon.ico`)
-with `npm run gen-icon` — it renders the SVG onto a canvas with Electron's Chromium,
-so no `sharp`/ImageMagick is required.
-
-## Roadmap
-
-- **Code signing** so Windows (and later macOS) don't warn on install.
-- **GitHub Releases** with the installer, optionally `electron-updater` auto-update.
-- **macOS / Linux** builds (each needs its own platform + opencode binary).
-- **Inspector → chat** — feed open-slide's click-to-comment back into the chat.
-- **Export** — surface open-slide's PDF/HTML export.
