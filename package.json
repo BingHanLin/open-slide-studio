@@ -5,6 +5,13 @@
   "private": true,
   "description": "Bundled desktop GUI: simplified opencode agent chat (left) + open-slide live web view (right). For non-engineers to build slides by natural language.",
   "main": "src/main.js",
+  "author": "Binghan Lin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BingHanLin/open-slide-studio.git"
+  },
+  "homepage": "https://github.com/BingHanLin/open-slide-studio",
+  "bugs": "https://github.com/BingHanLin/open-slide-studio/issues",
   "scripts": {
     "start": "electron .",
     "init-slides": "npx @open-slide/cli init slides",
