@@ -13,12 +13,28 @@ const slideDir = path.isAbsolute(config.slideProjectDir)
   ? config.slideProjectDir
   : path.join(ROOT, config.slideProjectDir);
 
+// User-picked model persists here (separate from config.json so we never
+// rewrite the user's hand-edited config).
+const SETTINGS_PATH = path.join(ROOT, "user-settings.json");
+function loadSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8"));
+  } catch {
+    return {};
+  }
+}
+function saveSettings(patch) {
+  const next = { ...loadSettings(), ...patch };
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(next, null, 2));
+}
+
 // ---- process & client state -------------------------------------------------
 let win = null;
 let slideProc = null; // open-slide vite dev server child process
 let opencodeProc = null; // `opencode serve` child process (we own it)
 let client = null; // SDK client bound to our opencode server
 let sessionId = null; // lazily-created opencode session
+let activeModel = loadSettings().model || config.opencode.model; // "provider/modelID"
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -52,6 +68,24 @@ function unwrap(r) {
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+// The opencode client connects a few seconds after the window loads; renderer
+// calls (model list, first send) may arrive before then.
+function waitForClient(timeoutMs = 25000) {
+  if (client) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const t = setInterval(() => {
+      if (client) {
+        clearInterval(t);
+        resolve();
+      } else if (Date.now() - start > timeoutMs) {
+        clearInterval(t);
+        reject(new Error("opencode 尚未就緒"));
+      }
+    }, 200);
+  });
 }
 
 function status(text) {
@@ -111,11 +145,12 @@ async function startOpencode() {
   let bin = config.opencode.bin || "opencode";
   if (/[\\/]/.test(bin) && !path.isAbsolute(bin)) bin = path.join(ROOT, bin);
   const cmd = /\s/.test(bin) ? `"${bin}"` : bin; // quote paths with spaces under shell
-  const { hostname, port, model, permission } = config.opencode;
+  const { hostname, port, permission } = config.opencode;
 
   status(`starting opencode serve (cwd=${slideDir})`);
   // permission lockdown travels with the server config (see config.json).
-  const serverConfig = { model, ...(permission ? { permission } : {}) };
+  // model is just the server default; each prompt sends activeModel explicitly.
+  const serverConfig = { model: activeModel, ...(permission ? { permission } : {}) };
   opencodeProc = spawn(cmd, ["serve", `--hostname=${hostname}`, `--port=${port}`], {
     cwd: slideDir,
     shell: true, // Windows: resolves the exe / .cmd shim on PATH
@@ -220,6 +255,7 @@ async function subscribeEvents() {
 
 async function ensureSession() {
   if (sessionId) return sessionId;
+  await waitForClient();
   // Belt-and-suspenders: server cwd is already slideDir, but scope explicitly too.
   const session = unwrap(
     await client.session.create({
@@ -239,7 +275,7 @@ async function handleSend(_evt, text) {
   currentAssistantMsg = null;
   announcedTools.clear();
 
-  const [providerID, ...rest] = String(config.opencode.model).split("/");
+  const [providerID, ...rest] = String(activeModel).split("/");
   const modelID = rest.join("/");
   const result = unwrap(
     await client.session.prompt({
@@ -258,6 +294,31 @@ async function handleSend(_evt, text) {
     .join("\n")
     .trim();
   return { text: replyText };
+}
+
+// ---- model selection --------------------------------------------------------
+
+// List the authenticated providers/models for the dropdown, grouped by provider.
+async function handleListModels() {
+  await waitForClient();
+  const data = unwrap(await client.config.providers());
+  const groups = (data.providers || []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    models: Object.keys(p.models || {}).sort(),
+  }));
+  return { current: activeModel, groups };
+}
+
+// Switch model: takes effect on the next prompt (no server restart needed),
+// and persists across launches.
+function handleSetModel(_evt, model) {
+  if (typeof model === "string" && model.includes("/")) {
+    activeModel = model;
+    saveSettings({ model });
+    status(`model switched to ${model}`);
+  }
+  return { current: activeModel };
 }
 
 // ---- window -----------------------------------------------------------------
@@ -280,7 +341,8 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   ipcMain.handle("chat:send", handleSend);
-  ipcMain.handle("config:get", () => ({ slideUrl: config.slideUrl }));
+  ipcMain.handle("models:list", handleListModels);
+  ipcMain.handle("model:set", handleSetModel);
 
   createWindow();
   startSlideServer();

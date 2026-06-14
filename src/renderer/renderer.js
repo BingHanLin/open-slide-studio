@@ -3,6 +3,7 @@
 const messagesEl = document.getElementById("messages");
 const inputEl = document.getElementById("input");
 const sendEl = document.getElementById("send");
+const modelEl = document.getElementById("model");
 const frameEl = document.getElementById("frame");
 const placeholderEl = document.getElementById("placeholder");
 const statusEl = document.getElementById("statusbar");
@@ -89,4 +90,32 @@ window.api.onActivity(({ text }) => {
   }
 });
 
+// ---- model dropdown ----
+async function loadModels() {
+  try {
+    const { current, groups } = await window.api.listModels();
+    modelEl.innerHTML = "";
+    for (const g of groups) {
+      const og = document.createElement("optgroup");
+      og.label = g.name;
+      for (const m of g.models) {
+        const id = `${g.id}/${m}`;
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = m;
+        if (id === current) opt.selected = true;
+        og.appendChild(opt);
+      }
+      modelEl.appendChild(og);
+    }
+  } catch (err) {
+    statusEl.textContent = `無法載入模型清單:${err.message}`;
+  }
+}
+
+modelEl.addEventListener("change", () => {
+  window.api.setModel(modelEl.value);
+});
+
+loadModels();
 inputEl.focus();

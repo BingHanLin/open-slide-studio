@@ -9,6 +9,9 @@ slides/
 # Local scratch / artifacts
 screenshot.png
 
+# Per-user runtime settings (selected model, etc.)
+user-settings.json
+
 # Logs & OS junk
 *.log
 npm-debug.log*
