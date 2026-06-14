@@ -8,6 +8,8 @@ const modelNameEl = document.getElementById("model-name");
 const modelMenu = document.getElementById("model-menu");
 const actionsBtn = document.getElementById("actions-btn");
 const actionsMenu = document.getElementById("actions-menu");
+const convBtn = document.getElementById("conv-btn");
+const convMenu = document.getElementById("conv-menu");
 const appEl = document.getElementById("app");
 const collapseEl = document.getElementById("collapse");
 const expandEl = document.getElementById("expand");
@@ -116,6 +118,17 @@ function qui() {
   return QUESTION_UI[lang] || QUESTION_UI.en;
 }
 
+// Conversation-switcher UI strings per locale.
+const CONV_UI = {
+  "zh-TW": { tip: "對話", neu: "＋ 新對話", untitled: "新對話…", del: "刪除對話", confirm: "確定刪除?", empty: "還沒有對話" },
+  "zh-CN": { tip: "对话", neu: "＋ 新对话", untitled: "新对话…", del: "删除对话", confirm: "确定删除?", empty: "还没有对话" },
+  en: { tip: "Conversations", neu: "＋ New chat", untitled: "New chat…", del: "Delete", confirm: "Delete?", empty: "No conversations yet" },
+  ja: { tip: "会話", neu: "＋ 新しい会話", untitled: "新しい会話…", del: "削除", confirm: "削除しますか?", empty: "会話がありません" },
+};
+function cui() {
+  return CONV_UI[lang] || CONV_UI.en;
+}
+
 // Placeholder hints per skill — shown in the empty input while that action is armed.
 const SKILL_PLACEHOLDERS = {
   "zh-TW": {
@@ -158,6 +171,7 @@ function applyLocale(locale) {
   document.documentElement.lang = locale;
   updatePlaceholder();
   modelBtn.dataset.tip = t.modelTitle;
+  convBtn.dataset.tip = cui().tip;
   actionsBtn.dataset.tip = { "zh-TW": "動作", "zh-CN": "动作", en: "Actions", ja: "アクション" }[locale] || "Actions";
   sendEl.dataset.tip = t.send;
   collapseEl.dataset.tip = BTN_TITLES[locale][0];
@@ -324,6 +338,8 @@ async function pump() {
   const item = queue.shift();
   if (!item) return;
   processing = true;
+  convBtn.disabled = true; // no switching/new/delete mid-turn
+  closeConvMenu();
   renderQueue(); // it's been picked up — drop from the waiting area
 
   // now it becomes a real user bubble (the agent is handling it)
@@ -354,6 +370,7 @@ async function pump() {
   }
 
   processing = false;
+  convBtn.disabled = false;
   pump(); // next queued turn, if any
 }
 
@@ -674,6 +691,172 @@ document.addEventListener("keydown", (e) => {
 function initActions() {
   updateSuggestions();
 }
+
+// ---- conversation switcher (new / list / switch / delete) ----
+// History/persistence lives entirely in the opencode server; this is pure UI
+// over sessions:list / session:switch / session:delete.
+let convSessions = [];
+
+// Locale-aware relative time ("3 minutes ago"), no strings to maintain.
+function relTime(ts) {
+  if (!ts) return "";
+  const diff = ts - Date.now(); // negative = past
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
+  const min = Math.round(diff / 60000);
+  if (Math.abs(min) < 60) return rtf.format(min, "minute");
+  const hr = Math.round(diff / 3600000);
+  if (Math.abs(hr) < 24) return rtf.format(hr, "hour");
+  return rtf.format(Math.round(diff / 86400000), "day");
+}
+
+// Wipe the chat pane back to a clean empty state (deck on the right is untouched).
+function resetConversationUI() {
+  messagesEl.innerHTML = "";
+  queue.length = 0;
+  renderQueue();
+  turnParts = new Map();
+  stopActivity();
+  clearPill();
+  updateSuggestions();
+  inputEl.focus();
+}
+
+async function newConversation() {
+  closeConvMenu();
+  try {
+    await window.api.newConversation();
+  } catch {}
+  resetConversationUI();
+}
+
+async function switchConversation(id) {
+  closeConvMenu();
+  let messages = [];
+  try {
+    const res = await window.api.switchSession(id);
+    messages = res.messages || [];
+  } catch (e) {
+    showError(e.message);
+    return;
+  }
+  resetConversationUI();
+  for (const m of messages) {
+    if (m.role === "user") addMessage("user", m.text);
+    else addAgentMarkdown(m.text);
+  }
+  updateSuggestions();
+  scrollToEnd();
+}
+
+async function deleteConversation(id) {
+  let res = {};
+  try {
+    res = await window.api.deleteSession(id);
+  } catch {}
+  try {
+    const { sessions } = await window.api.listSessions();
+    convSessions = sessions || [];
+  } catch {}
+  renderConvMenu();
+  if (res && res.wasCurrent) resetConversationUI();
+}
+
+// Turn a row into an inline "Delete?" confirm (session.delete is irreversible).
+function confirmDeleteRow(itemEl, id) {
+  itemEl.classList.add("confirming");
+  itemEl.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "conv-confirm";
+  const label = document.createElement("span");
+  label.textContent = cui().confirm;
+  const yes = document.createElement("button");
+  yes.className = "conv-cbtn danger";
+  yes.textContent = "✓";
+  yes.addEventListener("click", (e) => {
+    e.stopPropagation();
+    deleteConversation(id);
+  });
+  const no = document.createElement("button");
+  no.className = "conv-cbtn";
+  no.textContent = "×";
+  no.addEventListener("click", (e) => {
+    e.stopPropagation();
+    renderConvMenu();
+  });
+  wrap.append(label, yes, no);
+  itemEl.appendChild(wrap);
+}
+
+function renderConvMenu() {
+  convMenu.innerHTML = "";
+
+  const neu = document.createElement("div");
+  neu.className = "item conv-new";
+  neu.textContent = cui().neu;
+  neu.addEventListener("click", newConversation);
+  convMenu.appendChild(neu);
+
+  if (convSessions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "group";
+    empty.textContent = cui().empty;
+    convMenu.appendChild(empty);
+    return;
+  }
+
+  for (const s of convSessions) {
+    const item = document.createElement("div");
+    item.className = "item conv-item" + (s.current ? " selected" : "");
+
+    const main = document.createElement("div");
+    main.className = "conv-main";
+    const title = document.createElement("div");
+    title.className = "conv-title";
+    title.textContent = s.title || cui().untitled;
+    const time = document.createElement("div");
+    time.className = "conv-time";
+    time.textContent = relTime(s.updated);
+    main.append(title, time);
+    main.addEventListener("click", () => switchConversation(s.id));
+
+    const del = document.createElement("button");
+    del.className = "conv-del tip";
+    del.dataset.tip = cui().del;
+    del.textContent = "🗑";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      confirmDeleteRow(item, s.id);
+    });
+
+    item.append(main, del);
+    convMenu.appendChild(item);
+  }
+}
+
+async function openConvMenu() {
+  try {
+    const { sessions } = await window.api.listSessions();
+    convSessions = sessions || [];
+  } catch {
+    convSessions = [];
+  }
+  renderConvMenu();
+  convMenu.hidden = false;
+}
+function closeConvMenu() {
+  convMenu.hidden = true;
+}
+convBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (convMenu.hidden) openConvMenu();
+  else closeConvMenu();
+});
+document.addEventListener("click", (e) => {
+  if (!convMenu.hidden && !convMenu.contains(e.target) && !convBtn.contains(e.target)) closeConvMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeConvMenu();
+});
 
 // ---- custom model dropdown ----
 let modelGroups = [];

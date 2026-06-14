@@ -23,9 +23,11 @@
 
       /* ---- left: Claude-style chat ---- */
       #chat { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); overflow: hidden; min-width: 0; }
-      #chat header { padding: 8px 8px 0; display: flex; justify-content: flex-end; }
+      #chat header { padding: 8px 8px 0; display: flex; justify-content: space-between; align-items: center; }
       .iconbtn { background: transparent; color: var(--muted); border: 0; border-radius: 8px; width: 30px; height: 30px; line-height: 1; font-size: 17px; cursor: pointer; flex: none; padding: 0; display: inline-grid; place-items: center; }
       .iconbtn:hover { background: var(--user-bubble); color: var(--text); }
+      .iconbtn:disabled { opacity: .35; cursor: default; }
+      .iconbtn:disabled:hover { background: transparent; color: var(--muted); }
 
       /* custom tooltips (replaces the native title attribute) */
       .tip { position: relative; }
@@ -139,6 +141,23 @@
       .menu::-webkit-scrollbar { width: 8px; }
       .menu::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
+      /* conversation switcher (header dropdown — drops downward) */
+      .conv-wrap { position: relative; }
+      .menu.menu-down { bottom: auto; top: calc(100% + 6px); }
+      .conv-new { color: var(--accent); font-weight: 600; }
+      .conv-item { gap: 8px; }
+      .conv-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+      .conv-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .conv-time { font-size: 11px; color: var(--muted); }
+      .conv-del { flex: none; background: transparent; border: 0; color: var(--muted); font-size: 13px; cursor: pointer; opacity: 0; padding: 2px 4px; border-radius: 6px; }
+      .conv-item:hover .conv-del { opacity: 1; }
+      .conv-del:hover { color: #e05a5a; }
+      .conv-item.confirming { background: var(--user-bubble); }
+      .conv-confirm { display: flex; align-items: center; gap: 6px; width: 100%; font-size: 12.5px; }
+      .conv-confirm span { flex: 1; }
+      .conv-cbtn { flex: none; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 7px; width: 24px; height: 24px; cursor: pointer; line-height: 1; }
+      .conv-cbtn.danger { background: #e05a5a; border-color: #e05a5a; color: #fff; }
+
       #send { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--text); color: var(--bg); display: grid; place-items: center; cursor: pointer; padding: 0; }
       #send svg { width: 15px; height: 15px; display: block; }
       #send:disabled { opacity: .3; cursor: default; }
@@ -157,6 +176,10 @@
       <section id="chat">
         <button id="expand" class="iconbtn tip below" data-tip="展開">›</button>
         <header>
+          <div class="conv-wrap">
+            <button id="conv-btn" class="iconbtn tip below" data-tip="對話">🗨</button>
+            <div id="conv-menu" class="menu menu-down" hidden></div>
+          </div>
           <button id="collapse" class="iconbtn tip below" data-tip="收合">‹</button>
         </header>
         <div id="messages"></div>

@@ -317,10 +317,11 @@ async function ensureSession() {
   if (sessionId) return sessionId;
   await waitForClient();
   // Belt-and-suspenders: server cwd is already slideDir, but scope explicitly too.
+  // No title — opencode auto-names the session from the first message, which is
+  // what the conversation switcher lists.
   const session = unwrap(
     await client.session.create({
       query: { directory: slideDir },
-      body: { title: "open-slide deck" },
     })
   );
   sessionId = session.id;
@@ -385,6 +386,70 @@ async function handleRejectQuestion(_evt, requestID) {
   return { ok: true };
 }
 
+// ---- conversation (session) switching ---------------------------------------
+
+// Drop the current session reference (and its per-turn stream state). The next
+// send lazily creates a fresh session via ensureSession() — so a brand-new,
+// not-yet-sent conversation never materializes on the server or in the list.
+function resetSession() {
+  sessionId = null;
+  currentAssistantMsg = null;
+  announcedTools.clear();
+  seenQuestions.clear();
+}
+
+function handleNewConversation() {
+  resetSession();
+  return { ok: true };
+}
+
+// List top-level conversations for this deck, newest first. Child sessions
+// (spawned by the task/subtask tools) carry a parentID and are hidden.
+async function handleListSessions() {
+  await waitForClient();
+  const data = unwrap(await client.session.list({ query: { directory: slideDir } }));
+  const sessions = (Array.isArray(data) ? data : [])
+    .filter((s) => !s.parentID)
+    .sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0))
+    .map((s) => ({ id: s.id, title: s.title || "", updated: s.time?.updated || 0, current: s.id === sessionId }));
+  return { sessions };
+}
+
+// Switch the active session and return its history flattened to {role, text}
+// bubbles. Tool/question/reasoning parts are transient and omitted — only the
+// text the user already saw is rebuilt. Live events re-filter on the new id.
+async function handleSwitchSession(_evt, id) {
+  await waitForClient();
+  sessionId = id;
+  currentAssistantMsg = null;
+  announcedTools.clear();
+  seenQuestions.clear();
+  const data = unwrap(await client.session.messages({ path: { id }, query: { directory: slideDir } }));
+  const messages = (Array.isArray(data) ? data : [])
+    .map((m) => ({
+      role: m.info?.role,
+      text: (m.parts || [])
+        .filter((p) => p.type === "text" && p.text && !p.synthetic)
+        .map((p) => p.text)
+        .join("\n")
+        .trim(),
+    }))
+    .filter((m) => (m.role === "user" || m.role === "assistant") && m.text);
+  return { messages };
+}
+
+// Delete a session and all its data (irreversible). If it was the active one,
+// reset to a clean new-conversation state.
+async function handleDeleteSession(_evt, id) {
+  await waitForClient();
+  const wasCurrent = id === sessionId;
+  try {
+    await client.session.delete({ path: { id }, query: { directory: slideDir } });
+  } catch {}
+  if (wasCurrent) resetSession();
+  return { ok: true, wasCurrent };
+}
+
 // ---- model selection --------------------------------------------------------
 
 // List the authenticated providers/models for the dropdown, grouped by provider.
@@ -440,6 +505,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("model:set", handleSetModel);
   ipcMain.handle("question:reply", handleReplyQuestion);
   ipcMain.handle("question:reject", handleRejectQuestion);
+  ipcMain.handle("chat:new", handleNewConversation);
+  ipcMain.handle("sessions:list", handleListSessions);
+  ipcMain.handle("session:switch", handleSwitchSession);
+  ipcMain.handle("session:delete", handleDeleteSession);
 
   createWindow();
   startSlideServer();
