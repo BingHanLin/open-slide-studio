@@ -28,6 +28,7 @@
       "!slides/**",
       "!tools/**",
       "!build/icon.svg",
+      "!build/after-pack.js",
       "!*.mjs",
       "!screenshot.png",
       "!crop.png",
@@ -39,6 +40,7 @@
     "asarUnpack": [
       "node_modules/opencode-ai/bin/**"
     ],
+    "afterPack": "build/after-pack.js",
     "win": {
       "target": "nsis"
     },

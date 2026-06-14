@@ -48,6 +48,11 @@ const slideDir = path.isAbsolute(config.slideProjectDir)
   ? config.slideProjectDir
   : path.join(DATA_ROOT, config.slideProjectDir);
 
+// Installed builds ship the slide deck (and its node_modules) as a read-only
+// template under resources/; it's copied into the writable slideDir on first
+// launch. In dev there's no template — the deck already lives at slideDir.
+const SLIDE_TEMPLATE = app.isPackaged ? path.join(process.resourcesPath, "slides-template") : null;
+
 // User-picked model persists here (separate from config.json so we never
 // rewrite the user's hand-edited config).
 const SETTINGS_PATH = path.join(DATA_ROOT, "user-settings.json");
@@ -160,17 +165,42 @@ function onSlideOutput(buf) {
   }
 }
 
+// Seed the slide workspace on first launch (installed builds only): copy the
+// bundled template — deck source + node_modules — into the writable slideDir,
+// once. After that the agent edits it and Vite caches into it freely.
+async function ensureSlideProject() {
+  if (fs.existsSync(slideDir)) return;
+  if (!SLIDE_TEMPLATE || !fs.existsSync(SLIDE_TEMPLATE)) return; // dev: nothing to seed
+  status("first launch — preparing the slide workspace (one-time copy)…");
+  await fs.promises.cp(SLIDE_TEMPLATE, slideDir, { recursive: true });
+  status("slide workspace ready");
+}
+
+// Start the open-slide (Vite) dev server. Installed builds have no Node/npm on
+// the user's machine, so run the CLI entry with Electron's own bundled Node
+// (ELECTRON_RUN_AS_NODE) instead of `npm run dev`; dev keeps the npm script.
+function spawnSlideDev() {
+  if (app.isPackaged) {
+    const cli = path.join(slideDir, "node_modules", "@open-slide", "core", "bin.js");
+    return spawn(process.execPath, [cli, "dev"], {
+      cwd: slideDir,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    });
+  }
+  return spawn(config.slideDevCommand, config.slideDevArgs, {
+    cwd: slideDir,
+    shell: true, // dev: needed on Windows so the npm/.cmd shim resolves
+    env: process.env,
+  });
+}
+
 function startSlideServer() {
   if (!fs.existsSync(slideDir)) {
     statusError(`slide project not found at ${slideDir} — run \`npm run init-slides\` first`);
     return;
   }
   status(`starting open-slide dev server in ${slideDir}`);
-  slideProc = spawn(config.slideDevCommand, config.slideDevArgs, {
-    cwd: slideDir,
-    shell: true, // needed on Windows so .cmd shims (npm/npx) resolve
-    env: process.env,
-  });
+  slideProc = spawnSlideDev();
   slideProc.stdout.on("data", onSlideOutput);
   slideProc.stderr.on("data", onSlideOutput); // vite prints the URL on stdout, but be safe
   slideProc.on("exit", (code) => {
@@ -683,6 +713,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("auth:oauthFinish", handleAuthOauthFinish);
 
   createWindow();
+  await ensureSlideProject();
   startSlideServer();
 
   try {
