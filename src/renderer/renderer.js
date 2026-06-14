@@ -13,6 +13,7 @@ const frameEl = document.getElementById("frame");
 const placeholderEl = document.getElementById("placeholder");
 const statusEl = document.getElementById("statusbar");
 const suggestionsEl = document.getElementById("suggestions");
+const queueEl = document.getElementById("queue");
 const pillEl = document.getElementById("pill");
 const pillLabelEl = document.getElementById("pill-label");
 const pillXEl = document.getElementById("pill-x");
@@ -29,6 +30,7 @@ const I18N = {
     thinking: "思考中…",
     editing: "正在編寫投影片…",
     working: "處理中…",
+    searching: "正在查資料…",
     fileEdited: (l) => `更新投影片:${l}`,
     error: "發生錯誤,請再試一次",
     sendError: (m) => `出錯了:${m}`,
@@ -45,6 +47,7 @@ const I18N = {
     thinking: "思考中…",
     editing: "正在编写幻灯片…",
     working: "处理中…",
+    searching: "正在查资料…",
     fileEdited: (l) => `更新幻灯片:${l}`,
     error: "出错了,请再试一次",
     sendError: (m) => `出错了:${m}`,
@@ -61,6 +64,7 @@ const I18N = {
     thinking: "Thinking…",
     editing: "Writing slides…",
     working: "Working…",
+    searching: "Searching the web…",
     fileEdited: (l) => `Updated slide: ${l}`,
     error: "Something went wrong, please try again",
     sendError: (m) => `Error: ${m}`,
@@ -77,6 +81,7 @@ const I18N = {
     thinking: "考え中…",
     editing: "スライドを作成中…",
     working: "処理中…",
+    searching: "情報を検索中…",
     fileEdited: (l) => `スライドを更新:${l}`,
     error: "エラーが発生しました。もう一度お試しください",
     sendError: (m) => `エラー:${m}`,
@@ -170,6 +175,8 @@ function normalizeLocale(raw) {
 // ---- chat ----
 let activeBubble = null;
 let activeActivity = null;
+let activityTextEl = null;
+let activityTimer = null;
 let streamed = false;
 
 function addMessage(role, text) {
@@ -185,6 +192,39 @@ function scrollToEnd() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// A live "agent is working" line: status text + bouncing dots + elapsed timer.
+// The dots animate and the timer ticks continuously, so it never looks frozen
+// even when no events arrive for a while.
+function startActivity(text) {
+  const el = addMessage("agent activity", "");
+  activityTextEl = document.createElement("span");
+  activityTextEl.className = "act-text";
+  activityTextEl.textContent = text;
+  const dots = document.createElement("span");
+  dots.className = "dots";
+  dots.innerHTML = "<i></i><i></i><i></i>";
+  const time = document.createElement("span");
+  time.className = "time";
+  el.append(activityTextEl, dots, time);
+
+  const start = Date.now();
+  const tick = () => {
+    const s = Math.floor((Date.now() - start) / 1000);
+    time.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  tick();
+  activityTimer = setInterval(tick, 1000);
+  return el;
+}
+
+function stopActivity() {
+  if (activityTimer) clearInterval(activityTimer);
+  activityTimer = null;
+  if (activeActivity) activeActivity.remove();
+  activeActivity = null;
+  activityTextEl = null;
+}
+
 // ChatGPT-style auto-growing textarea.
 function autoGrow() {
   inputEl.style.height = "auto";
@@ -192,47 +232,84 @@ function autoGrow() {
 }
 inputEl.addEventListener("input", autoGrow);
 
-async function send() {
+// Turn queue: one turn runs at a time. New input while busy is queued and
+// shown in the waiting area; it only becomes a user bubble once the agent
+// actually picks it up.
+const queue = [];
+let processing = false;
+
+function queueText(item) {
+  return item.skill
+    ? item.text
+      ? `${actionLabel(item.skill)} · ${item.text}`
+      : actionLabel(item.skill)
+    : item.text;
+}
+
+function renderQueue() {
+  queueEl.innerHTML = "";
+  queueEl.classList.toggle("show", queue.length > 0);
+  for (const item of queue) {
+    const div = document.createElement("div");
+    div.className = "queued";
+    div.textContent = queueText(item);
+    queueEl.appendChild(div);
+  }
+}
+
+function submit() {
   const text = inputEl.value.trim();
   const skill = activeSkill;
   if (!text && !skill) return;
   inputEl.value = "";
   autoGrow();
-  sendEl.disabled = true;
-
-  // user bubble shows the friendly action label (if any) + text
-  const shown = skill ? (text ? `${actionLabel(skill)}\n${text}` : actionLabel(skill)) : text;
-  addMessage("user", shown);
   clearPill();
+  queue.push({ text, skill });
+  renderQueue();
+  pump();
+}
+
+async function pump() {
+  if (processing) return;
+  const item = queue.shift();
+  if (!item) return;
+  processing = true;
+  renderQueue(); // it's been picked up — drop from the waiting area
+
+  // now it becomes a real user bubble (the agent is handling it)
+  const shown = item.skill
+    ? item.text
+      ? `${actionLabel(item.skill)}\n${item.text}`
+      : actionLabel(item.skill)
+    : item.text;
+  addMessage("user", shown);
   updateSuggestions();
 
-  // Assistant bubble fills in via chat:stream; activity line shows friendly
-  // localized progress and is removed when the turn ends.
   activeBubble = addMessage("agent", "");
-  activeActivity = addMessage("agent thinking", t.making);
+  activeActivity = startActivity(t.making);
   streamed = false;
 
   try {
-    const reply = await window.api.sendMessage({ text, skill });
+    const reply = await window.api.sendMessage({ text: item.text, skill: item.skill });
     if (!streamed) activeBubble.textContent = reply?.text || t.done;
   } catch (err) {
     activeBubble.textContent = t.sendError(err.message);
   } finally {
-    if (activeActivity) activeActivity.remove();
+    stopActivity();
     if (activeBubble && !activeBubble.textContent) activeBubble.remove();
     activeBubble = null;
-    activeActivity = null;
-    sendEl.disabled = false;
-    inputEl.focus();
     scrollToEnd();
   }
+
+  processing = false;
+  pump(); // next queued turn, if any
 }
 
-sendEl.addEventListener("click", send);
+sendEl.addEventListener("click", submit);
 inputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
-    send();
+    submit();
   }
 });
 
@@ -266,17 +343,18 @@ window.api.onStream(({ text }) => {
 
 // Friendly localized progress — update the transient activity line.
 window.api.onActivity((payload) => {
-  if (!activeActivity) return;
+  if (!activityTextEl) return;
   let text = "";
   switch (payload.kind) {
     case "thinking": text = t.thinking; break;
     case "editing": text = t.editing; break;
     case "working": text = t.working; break;
+    case "searching": text = t.searching; break;
     case "fileEdited": text = t.fileEdited(payload.label); break;
     case "error": text = t.error; break;
     default: return;
   }
-  activeActivity.textContent = text;
+  activityTextEl.textContent = text;
   scrollToEnd();
 });
 

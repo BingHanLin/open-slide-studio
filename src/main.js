@@ -5,6 +5,23 @@ const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
+const { fetch: undiciFetch, Agent } = require("undici");
+
+// Agent turns are long (slide generation can take minutes); the opencode server
+// holds the prompt/command request open until the turn finishes. Node's default
+// fetch (undici) aborts after a ~5-min headers timeout → "fetch failed". Use a
+// dispatcher with timeouts disabled for all SDK calls (incl. the SSE stream).
+const NO_TIMEOUT = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
+async function noTimeoutFetch(request) {
+  const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  const body = hasBody ? Buffer.from(await request.arrayBuffer()) : undefined;
+  return undiciFetch(request.url, {
+    method: request.method,
+    headers: Object.fromEntries(request.headers),
+    body,
+    dispatcher: NO_TIMEOUT,
+  });
+}
 
 const ROOT = path.join(__dirname, "..");
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, "config.json"), "utf8"));
@@ -186,7 +203,7 @@ async function startOpencode() {
     });
   });
 
-  client = createOpencodeClient({ baseUrl: url });
+  client = createOpencodeClient({ baseUrl: url, fetch: noTimeoutFetch });
   status(`opencode running at ${url}`);
   subscribeEvents(); // fire-and-forget live event stream
 }
@@ -205,6 +222,9 @@ function toolKind(tool) {
     case "task":
     case "subtask":
       return "working";
+    case "webfetch":
+    case "websearch":
+      return "searching";
     default:
       return null; // read/list/glob/grep/etc. — hide
   }

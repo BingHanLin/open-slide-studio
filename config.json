@@ -17,11 +17,11 @@
     "permission": {
       "edit": "allow",
       "bash": "deny",
-      "webfetch": "deny",
+      "webfetch": "allow",
       "external_directory": "deny",
       "doom_loop": "deny"
     }
   },
-  "//permission": "Lockdown for non-engineers. edit=allow lets the agent freely write slide files; external_directory=deny confines it to the slide project; bash/webfetch/doom_loop=deny block shell, network, runaway loops. NEVER use \"ask\" — the headless server has no one to answer and would hang.",
+  "//permission": "Lockdown for non-engineers. edit=allow lets the agent freely write slide files; external_directory=deny confines it to the slide project; bash/doom_loop=deny block shell and runaway loops. webfetch=allow lets the agent read URLs; websearch isn't in the permission schema so it's enabled by default — together the agent can research and pull web content. NEVER use \"ask\" — the headless server has no one to answer and would hang.",
   "//opencode": "We spawn `<bin> serve` ourselves with cwd=slideProjectDir. bin is the opencode-ai npm binary (version-pinned in package.json, downloaded on npm install); a bare name like \"opencode\" would resolve via PATH instead. Path bins are resolved against the app root. Authenticate once with `opencode auth login`. model format is provider/modelID."
 }

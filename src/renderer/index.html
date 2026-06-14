@@ -49,9 +49,20 @@
       .msg { line-height: 1.6; white-space: pre-wrap; word-break: break-word; font-size: 13px; }
       /* user: grey rounded bubble, right-aligned */
       .msg.user { background: var(--user-bubble); color: var(--text); align-self: flex-end; max-width: 88%; padding: 8px 13px; border-radius: 16px; }
-      /* assistant: no bubble, full-width plain text */
-      .msg.agent { align-self: stretch; max-width: 100%; }
+      /* assistant: left-aligned bubble */
+      .msg.agent { align-self: flex-start; max-width: 92%; background: var(--field); border: 1px solid var(--line); border-radius: 14px; padding: 9px 13px; }
       .msg.thinking { color: var(--muted); font-size: 12.5px; }
+      /* the working indicator is a status line, not a bubble */
+      .msg.agent.activity { background: transparent; border: 0; padding: 2px 2px; max-width: 100%; }
+      /* animated "agent is working" indicator: text + bouncing dots + timer */
+      .activity { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; }
+      .activity .dots { display: inline-flex; gap: 3px; }
+      .activity .dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .25; animation: act-bounce 1.2s infinite ease-in-out; }
+      .activity .dots i:nth-child(2) { animation-delay: .18s; }
+      .activity .dots i:nth-child(3) { animation-delay: .36s; }
+      @keyframes act-bounce { 0%, 70%, 100% { transform: translateY(0); opacity: .25; } 35% { transform: translateY(-3px); opacity: .9; } }
+      .activity .time { opacity: .65; font-variant-numeric: tabular-nums; }
+      @media (prefers-reduced-motion: reduce) { .activity .dots i { animation: none; opacity: .6; } }
       #messages::-webkit-scrollbar { width: 8px; }
       #messages::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
@@ -61,6 +72,12 @@
       #app.collapsed #suggestions { display: none; }
       .chip { background: var(--field); border: 1px solid var(--line); border-radius: 16px; padding: 7px 12px; font-size: 12.5px; color: var(--text); cursor: pointer; }
       .chip:hover { background: var(--user-bubble); }
+      /* waiting area: queued messages not yet picked up by the agent */
+      #queue { display: none; flex-direction: column; gap: 6px; padding: 0 14px 8px; }
+      #queue.show { display: flex; }
+      #app.collapsed #queue { display: none; }
+      .queued { align-self: flex-end; max-width: 88%; background: var(--user-bubble); color: var(--muted); border: 1px dashed var(--line); border-radius: 16px; padding: 6px 12px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+
       /* selected-action pill inside the composer */
       .pill { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; background: var(--user-bubble); color: var(--text); border-radius: 12px; padding: 3px 6px 3px 10px; font-size: 12px; }
       .pill .x { cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; }
@@ -109,6 +126,7 @@
         </header>
         <div id="messages"></div>
         <div id="suggestions"></div>
+        <div id="queue"></div>
         <div id="composer">
           <div class="composer-box">
             <div id="pill" class="pill" style="display:none"><span id="pill-label"></span><span class="x" id="pill-x">×</span></div>

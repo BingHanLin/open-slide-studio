@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.17.4",
-    "opencode-ai": "^1.17.4"
+    "opencode-ai": "^1.17.4",
+    "undici": "^7.27.2"
   },
   "devDependencies": {
     "electron": "^42.4.0"
