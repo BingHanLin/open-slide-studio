@@ -35,6 +35,7 @@ let opencodeProc = null; // `opencode serve` child process (we own it)
 let client = null; // SDK client bound to our opencode server
 let sessionId = null; // lazily-created opencode session
 let activeModel = loadSettings().model || config.opencode.model; // "provider/modelID"
+let shuttingDown = false; // suppress error toasts from killing child procs on quit
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -88,9 +89,15 @@ function waitForClient(timeoutMs = 25000) {
   });
 }
 
+// Info goes to the console only; the renderer hides these. Errors are flagged
+// so the renderer can surface them briefly.
 function status(text) {
   console.log("[shell]", text);
-  send("shell:status", text);
+  send("shell:status", { text, error: false });
+}
+function statusError(text) {
+  console.error("[shell:error]", text);
+  send("shell:status", { text, error: true });
 }
 
 // ---- open-slide dev server --------------------------------------------------
@@ -112,13 +119,13 @@ function onSlideOutput(buf) {
     status(`open-slide dev server at ${url}`);
     waitForUrl(url)
       .then(() => send("slide:ready", url))
-      .catch((err) => status(err.message));
+      .catch((err) => statusError(err.message));
   }
 }
 
 function startSlideServer() {
   if (!fs.existsSync(slideDir)) {
-    status(`slide project not found at ${slideDir} — run \`npm run init-slides\` first`);
+    statusError(`slide project not found at ${slideDir} — run \`npm run init-slides\` first`);
     return;
   }
   status(`starting open-slide dev server in ${slideDir}`);
@@ -129,7 +136,9 @@ function startSlideServer() {
   });
   slideProc.stdout.on("data", onSlideOutput);
   slideProc.stderr.on("data", onSlideOutput); // vite prints the URL on stdout, but be safe
-  slideProc.on("exit", (code) => status(`open-slide dev server exited (${code})`));
+  slideProc.on("exit", (code) => {
+    if (!shuttingDown) statusError(`open-slide dev server exited (${code})`);
+  });
 }
 
 // ---- opencode ---------------------------------------------------------------
@@ -356,7 +365,7 @@ app.whenReady().then(async () => {
   try {
     await startOpencode();
   } catch (err) {
-    status(`opencode failed to start: ${err.message} — is it installed & authenticated?`);
+    statusError(`opencode failed to start: ${err.message} — is it installed & authenticated?`);
   }
 
   // The slide view URL is detected from the dev server's output (port is
@@ -381,6 +390,7 @@ function killTree(proc) {
 }
 
 function shutdown() {
+  shuttingDown = true;
   killTree(slideProc);
   killTree(opencodeProc);
 }

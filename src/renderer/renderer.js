@@ -191,8 +191,16 @@ window.api.onSlideReady((url) => {
   frameEl.addEventListener("dom-ready", startSettingsSync, { once: true });
 });
 
-window.api.onStatus((text) => {
+// The status bar stays hidden; it flashes only for real errors, then auto-hides.
+let errorTimer = null;
+function showError(text) {
   statusEl.textContent = text;
+  statusEl.classList.add("show");
+  clearTimeout(errorTimer);
+  errorTimer = setTimeout(() => statusEl.classList.remove("show"), 6000);
+}
+window.api.onStatus((payload) => {
+  if (payload && payload.error) showError(payload.text);
 });
 
 // Streaming assistant text — replace the bubble contents as it grows.
@@ -276,7 +284,7 @@ async function loadModels() {
       modelEl.appendChild(og);
     }
   } catch (err) {
-    statusEl.textContent = t.modelsError(err.message);
+    showError(t.modelsError(err.message));
   }
 }
 
