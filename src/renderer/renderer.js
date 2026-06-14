@@ -4,7 +4,6 @@ const messagesEl = document.getElementById("messages");
 const inputEl = document.getElementById("input");
 const sendEl = document.getElementById("send");
 const modelEl = document.getElementById("model");
-const titleEl = document.getElementById("title");
 const appEl = document.getElementById("app");
 const collapseEl = document.getElementById("collapse");
 const expandEl = document.getElementById("expand");
@@ -96,7 +95,6 @@ function applyLocale(locale) {
   lang = locale;
   t = I18N[lang];
   document.documentElement.lang = locale;
-  titleEl.textContent = t.title;
   modelEl.title = t.modelTitle;
   inputEl.placeholder = t.placeholder;
   sendEl.title = t.send;
