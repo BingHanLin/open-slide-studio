@@ -492,13 +492,18 @@ async function handleAuthMethods() {
   const methods = unwrap(await client.provider.auth({ query: { directory: slideDir } }));
   const connected = new Set(list.connected || []);
   const providers = (list.all || [])
-    .map((p) => ({
-      id: p.id,
-      name: p.name || p.id,
-      connected: connected.has(p.id),
-      methods: methods[p.id] || [],
-    }))
-    .filter((p) => p.methods.length > 0)
+    .map((p) => {
+      let m = methods[p.id] || [];
+      // Only ~9 of ~145 providers expose a special auth flow (OAuth / named API
+      // flow). The rest authenticate with a plain API key, which auth.set writes
+      // straight to opencode's store. Offer that key field whenever the catalog
+      // marks the provider as key-based (it declares an env var) — so the panel
+      // covers the whole catalog (e.g. Kimi, Anthropic, OpenRouter), not just
+      // the handful with interactive flows.
+      if (m.length === 0 && (p.env || []).length > 0) m = [{ type: "api" }];
+      return { id: p.id, name: p.name || p.id, connected: connected.has(p.id), methods: m };
+    })
+    .filter((p) => p.methods.length > 0) // still drop ones with no way to connect here
     .sort((a, b) => Number(b.connected) - Number(a.connected) || a.name.localeCompare(b.name));
   return { providers };
 }

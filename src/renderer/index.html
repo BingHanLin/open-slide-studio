@@ -181,7 +181,10 @@
       .modal-overlay[hidden] { display: none; }
       .modal { width: 440px; max-width: calc(100vw - 40px); max-height: calc(100vh - 80px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.4); overflow: hidden; }
       .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 600; }
-      .modal-body { padding: 12px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+      .auth-search-row { padding: 12px 16px 4px; }
+      .auth-search { width: 100%; padding: 8px 10px; background: var(--field); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font: inherit; font-size: 12.5px; outline: none; }
+      .auth-search:focus { border-color: var(--accent); }
+      .modal-body { padding: 8px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
       .auth-row { border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 9px; }
       .auth-rowhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
       .auth-name { font-size: 13px; font-weight: 600; }
@@ -248,6 +251,9 @@
         <div class="modal-head">
           <span id="auth-title">連接模型供應商</span>
           <button id="auth-close" class="iconbtn">×</button>
+        </div>
+        <div class="auth-search-row">
+          <input id="auth-search" class="auth-search" type="text" autocomplete="off" spellcheck="false" />
         </div>
         <div id="auth-body" class="modal-body"></div>
       </div>

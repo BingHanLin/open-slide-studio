@@ -14,6 +14,7 @@ const authModal = document.getElementById("auth-modal");
 const authTitle = document.getElementById("auth-title");
 const authClose = document.getElementById("auth-close");
 const authBody = document.getElementById("auth-body");
+const authSearch = document.getElementById("auth-search");
 const versionEl = document.getElementById("version");
 const appEl = document.getElementById("app");
 const collapseEl = document.getElementById("collapse");
@@ -136,10 +137,10 @@ function cui() {
 
 // Connect-provider (model authentication) UI strings per locale.
 const AUTH_UI = {
-  "zh-TW": { title: "連接模型供應商", connect: "連接供應商", connected: "已連線", login: "登入", save: "連接", key: "貼上 API Key", code: "貼上授權碼", codeBtn: "完成", opening: "已開啟瀏覽器…", saving: "連接中…", fail: "連接失敗,請再試一次", empty: "沒有可連接的供應商" },
-  "zh-CN": { title: "连接模型供应商", connect: "连接供应商", connected: "已连接", login: "登录", save: "连接", key: "粘贴 API Key", code: "粘贴授权码", codeBtn: "完成", opening: "已打开浏览器…", saving: "连接中…", fail: "连接失败,请重试", empty: "没有可连接的供应商" },
-  en: { title: "Connect a provider", connect: "Connect provider", connected: "Connected", login: "Log in", save: "Connect", key: "Paste API key", code: "Paste the code", codeBtn: "Done", opening: "Opening browser…", saving: "Connecting…", fail: "Connection failed, try again", empty: "No connectable providers" },
-  ja: { title: "プロバイダーを接続", connect: "プロバイダーを接続", connected: "接続済み", login: "ログイン", save: "接続", key: "APIキーを貼り付け", code: "認証コードを貼り付け", codeBtn: "完了", opening: "ブラウザを開きました…", saving: "接続中…", fail: "接続に失敗しました", empty: "接続できるプロバイダーがありません" },
+  "zh-TW": { title: "連接模型供應商", connect: "連接供應商", connected: "已連線", login: "登入", save: "連接", key: "貼上 API Key", code: "貼上授權碼", codeBtn: "完成", opening: "已開啟瀏覽器…", saving: "連接中…", fail: "連接失敗,請再試一次", empty: "沒有可連接的供應商", search: "搜尋供應商…", noMatch: "找不到符合的供應商" },
+  "zh-CN": { title: "连接模型供应商", connect: "连接供应商", connected: "已连接", login: "登录", save: "连接", key: "粘贴 API Key", code: "粘贴授权码", codeBtn: "完成", opening: "已打开浏览器…", saving: "连接中…", fail: "连接失败,请重试", empty: "没有可连接的供应商", search: "搜索供应商…", noMatch: "找不到匹配的供应商" },
+  en: { title: "Connect a provider", connect: "Connect provider", connected: "Connected", login: "Log in", save: "Connect", key: "Paste API key", code: "Paste the code", codeBtn: "Done", opening: "Opening browser…", saving: "Connecting…", fail: "Connection failed, try again", empty: "No connectable providers", search: "Search providers…", noMatch: "No matching providers" },
+  ja: { title: "プロバイダーを接続", connect: "プロバイダーを接続", connected: "接続済み", login: "ログイン", save: "接続", key: "APIキーを貼り付け", code: "認証コードを貼り付け", codeBtn: "完了", opening: "ブラウザを開きました…", saving: "接続中…", fail: "接続に失敗しました", empty: "接続できるプロバイダーがありません", search: "プロバイダーを検索…", noMatch: "一致するプロバイダーがありません" },
 };
 function aui() {
   return AUTH_UI[lang] || AUTH_UI.en;
@@ -198,6 +199,7 @@ function applyLocale(locale) {
   if (activeSkill) pillLabelEl.textContent = actionLabel(activeSkill);
   // refresh the connect-provider modal if it's open
   authTitle.textContent = aui().title;
+  authSearch.placeholder = aui().search;
   if (!authModal.hidden) renderAuthList();
   if (modelGroups.length === 0) modelNameEl.textContent = aui().connect;
 }
@@ -895,11 +897,24 @@ document.addEventListener("keydown", (e) => {
 // through once and never store them. After any success we refresh the model
 // dropdown so the newly connected provider's models appear.
 let authBusy = false;
+let authProviders = []; // cached so filtering doesn't re-fetch on every keystroke
+let authLoadError = false;
+
+async function loadAuthProviders() {
+  try {
+    authProviders = (await window.api.authMethods()).providers || [];
+    authLoadError = false;
+  } catch {
+    authProviders = [];
+    authLoadError = true;
+  }
+}
 
 async function refreshAfterAuth() {
   authBusy = false;
   await loadModels();
-  await renderAuthList();
+  await loadAuthProviders();
+  renderAuthList();
 }
 
 function authError(parent) {
@@ -1014,24 +1029,32 @@ function buildOauthMethod(p, method, idx) {
   return wrap;
 }
 
-async function renderAuthList() {
+// Pure render from the cached provider list, filtered by the search box.
+function renderAuthList() {
   authBody.innerHTML = "";
-  let providers = [];
-  try {
-    const res = await window.api.authMethods();
-    providers = res.providers || [];
-  } catch {
+  if (authLoadError) {
     authError(authBody);
     return;
   }
-  if (!providers.length) {
+  if (!authProviders.length) {
     const empty = document.createElement("div");
     empty.className = "auth-empty";
     empty.textContent = aui().empty;
     authBody.appendChild(empty);
     return;
   }
-  for (const p of providers) {
+  const q = authSearch.value.trim().toLowerCase();
+  const list = q
+    ? authProviders.filter((p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q))
+    : authProviders;
+  if (!list.length) {
+    const none = document.createElement("div");
+    none.className = "auth-empty";
+    none.textContent = aui().noMatch;
+    authBody.appendChild(none);
+    return;
+  }
+  for (const p of list) {
     const row = document.createElement("div");
     row.className = "auth-row";
     const head = document.createElement("div");
@@ -1058,13 +1081,18 @@ async function renderAuthList() {
 async function openAuthModal() {
   authModal.hidden = false;
   authTitle.textContent = aui().title;
+  authSearch.value = "";
+  authSearch.placeholder = aui().search;
   authBody.innerHTML = "";
   const loading = document.createElement("div");
   loading.className = "auth-empty";
   loading.textContent = "…";
   authBody.appendChild(loading);
-  await renderAuthList();
+  await loadAuthProviders();
+  renderAuthList();
+  authSearch.focus();
 }
+authSearch.addEventListener("input", renderAuthList);
 function closeAuthModal() {
   authModal.hidden = true;
 }
