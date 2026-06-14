@@ -66,6 +66,7 @@ let opencodeUrl = null; // base URL of our opencode server (for raw question end
 let sessionId = null; // lazily-created opencode session
 let activeModel = loadSettings().model || config.opencode.model; // "provider/modelID"
 let shuttingDown = false; // suppress error toasts from killing child procs on quit
+let turnInFlight = false; // a prompt/command is streaming — don't restart the server under it
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -241,6 +242,31 @@ async function startOpencode() {
   subscribeEvents(); // fire-and-forget live event stream
 }
 
+// opencode enumerates providers (and installs a provider's SDK package) once, at
+// startup, reading auth.json then. A credential added via auth.set on the
+// already-running server therefore isn't reflected until a fresh process — which
+// is why a newly connected provider wouldn't appear in the model list until the
+// app was restarted. Re-spawn the server so the new provider shows up right away.
+// Pending/subsequent SDK calls block on waitForClient() until the new client is up.
+async function restartOpencode() {
+  // Never sever an active turn: if the agent is mid-generation (or paused on a
+  // question), wait for it to finish before recycling the server. The key is
+  // already stored, so the new provider just appears a little later instead of
+  // killing the user's running turn.
+  if (turnInFlight) status("provider connected — will refresh once the current turn finishes");
+  while (turnInFlight) await new Promise((r) => setTimeout(r, 250));
+  status("restarting opencode to pick up the new provider");
+  client = null;
+  const old = opencodeProc;
+  opencodeProc = null;
+  if (old) {
+    old.removeAllListeners(); // its exit is intentional — don't reject/toast
+    killTree(old);
+    await new Promise((r) => setTimeout(r, 500)); // let the OS release the port before rebinding
+  }
+  await startOpencode();
+}
+
 let currentAssistantMsg = null; // id of the assistant message we're streaming
 const announcedTools = new Set(); // callIDs already surfaced this turn
 const seenQuestions = new Set(); // question callIDs already forwarded to the renderer
@@ -369,32 +395,40 @@ async function handleSend(_evt, { text, skill } = {}) {
   announcedTools.clear();
   seenQuestions.clear();
 
-  let result;
-  if (skill) {
-    result = unwrap(
-      await client.session.command({
-        path: { id: sessionId },
-        query: { directory: slideDir },
-        body: { command: skill, arguments: text || "", model: activeModel },
-      })
-    );
-  } else {
-    const [providerID, ...rest] = String(activeModel).split("/");
-    result = unwrap(
-      await client.session.prompt({
-        path: { id: sessionId },
-        query: { directory: slideDir },
-        body: { model: { providerID, modelID: rest.join("/") }, parts: [{ type: "text", text }] },
-      })
-    );
+  // Mark the turn in flight so a provider connect can't restart the server out
+  // from under this streaming request (it would abort the turn). The flag stays
+  // set while the turn is paused on a pending question too.
+  turnInFlight = true;
+  try {
+    let result;
+    if (skill) {
+      result = unwrap(
+        await client.session.command({
+          path: { id: sessionId },
+          query: { directory: slideDir },
+          body: { command: skill, arguments: text || "", model: activeModel },
+        })
+      );
+    } else {
+      const [providerID, ...rest] = String(activeModel).split("/");
+      result = unwrap(
+        await client.session.prompt({
+          path: { id: sessionId },
+          query: { directory: slideDir },
+          body: { model: { providerID, modelID: rest.join("/") }, parts: [{ type: "text", text }] },
+        })
+      );
+    }
+    const parts = result?.parts || result?.message?.parts || [];
+    const replyText = parts
+      .filter((p) => p.type === "text" && p.text)
+      .map((p) => p.text)
+      .join("\n")
+      .trim();
+    return { text: replyText };
+  } finally {
+    turnInFlight = false;
   }
-  const parts = result?.parts || result?.message?.parts || [];
-  const replyText = parts
-    .filter((p) => p.type === "text" && p.text)
-    .map((p) => p.text)
-    .join("\n")
-    .trim();
-  return { text: replyText };
 }
 
 // ---- question reply ---------------------------------------------------------
@@ -513,6 +547,7 @@ async function handleAuthMethods() {
 async function handleAuthSetKey(_evt, { id, key }) {
   await waitForClient();
   unwrap(await client.auth.set({ path: { id }, query: { directory: slideDir }, body: { type: "api", key } }));
+  await restartOpencode(); // so the renderer's post-connect model refresh sees the new provider
   return { ok: true };
 }
 
@@ -530,6 +565,7 @@ async function handleAuthOauthStart(_evt, { id, method }) {
     return { done: false, needCode: true, instructions: auth.instructions || "" };
   }
   unwrap(await client.provider.oauth.callback({ path: { id }, query: { directory: slideDir }, body: { method } }));
+  await restartOpencode(); // so the renderer's post-connect model refresh sees the new provider
   return { done: true };
 }
 
@@ -539,6 +575,7 @@ async function handleAuthOauthFinish(_evt, { id, method, code }) {
   unwrap(
     await client.provider.oauth.callback({ path: { id }, query: { directory: slideDir }, body: { method, code } })
   );
+  await restartOpencode(); // so the renderer's post-connect model refresh sees the new provider
   return { ok: true };
 }
 
