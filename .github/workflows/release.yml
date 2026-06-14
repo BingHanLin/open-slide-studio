@@ -30,9 +30,20 @@ jobs:
       - name: Scaffold the slide deck
         run: npx --yes @open-slide/cli init slides --use-npm --no-git --force
 
-      # Build the NSIS installer and publish it to the GitHub Release for this tag.
-      # Unsigned for now (no cert on the runner) — see README.
-      - name: Build & publish installer
-        run: npm run dist -- --publish always
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Build the NSIS installer. Unsigned for now (no cert on the runner) — see
+      # README. `--publish never` keeps electron-builder's own publisher out of
+      # it: that publisher races on multi-artifact uploads and ends up creating
+      # duplicate draft releases with the assets split between them. latest.yml is
+      # still emitted because a github publish provider is configured.
+      - name: Build installer
+        run: npm run dist -- --publish never
+
+      # Upload every artifact to a single GitHub Release for this tag (idempotent).
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          files: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
