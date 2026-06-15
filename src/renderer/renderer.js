@@ -1252,8 +1252,11 @@ setCollapsed(localStorage.getItem("panelCollapsed") === "1");
 
 async function loadAppInfo() {
   try {
-    const { opencodeVersion } = await window.api.appInfo();
-    if (opencodeVersion) versionEl.textContent = `opencode v${opencodeVersion}`;
+    const { appVersion, opencodeVersion } = await window.api.appInfo();
+    const parts = [];
+    if (appVersion) parts.push(`open-slide studio v${appVersion}`);
+    if (opencodeVersion) parts.push(`opencode v${opencodeVersion}`);
+    if (parts.length) versionEl.textContent = parts.join(" · ");
   } catch {}
 }
 

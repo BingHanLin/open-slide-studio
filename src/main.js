@@ -754,7 +754,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("model:set", handleSetModel);
   ipcMain.handle("question:reply", handleReplyQuestion);
   ipcMain.handle("question:reject", handleRejectQuestion);
-  ipcMain.handle("app:info", () => ({ opencodeVersion, sdkVersion }));
+  ipcMain.handle("app:info", () => ({ appVersion: app.getVersion(), opencodeVersion, sdkVersion }));
   ipcMain.handle("chat:new", handleNewConversation);
   ipcMain.handle("sessions:list", handleListSessions);
   ipcMain.handle("session:switch", handleSwitchSession);
