@@ -1,5 +1,9 @@
 # open-slide studio
 
+<p align="center">
+  <img src="docs/hero.png" alt="open-slide studio — opencode agent chat on the left, the live open-slide deck on the right" width="900">
+</p>
+
 A desktop app that **integrates [opencode](https://opencode.ai) and
 [open-slide](https://github.com/1weiho/open-slide)** so **non-engineers** can
 build slide decks just by chatting in natural language.
