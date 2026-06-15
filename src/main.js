@@ -169,10 +169,23 @@ function onSlideOutput(buf) {
 // bundled template — deck source + node_modules — into the writable slideDir,
 // once. After that the agent edits it and Vite caches into it freely.
 async function ensureSlideProject() {
-  if (fs.existsSync(slideDir)) return;
+  // Consider the deck ready only if the open-slide CLI entry is present — not
+  // merely that slideDir exists. A first-run copy that was interrupted leaves a
+  // bare/partial slideDir; trusting it would brick the slide server (it can't
+  // find @open-slide/core), so re-seed instead.
+  const cliEntry = path.join(slideDir, "node_modules", "@open-slide", "core", "bin.js");
+  if (fs.existsSync(cliEntry)) return;
   if (!SLIDE_TEMPLATE || !fs.existsSync(SLIDE_TEMPLATE)) return; // dev: nothing to seed
+
   status("first launch — preparing the slide workspace (one-time copy)…");
-  await fs.promises.cp(SLIDE_TEMPLATE, slideDir, { recursive: true });
+  // Copy into a sibling staging dir, then rename it into place: the swap is
+  // atomic on the same volume, so a copy killed midway never leaves a
+  // half-seeded slideDir we'd later mistake for ready.
+  const staging = `${slideDir}.seeding`;
+  await fs.promises.rm(staging, { recursive: true, force: true });
+  await fs.promises.rm(slideDir, { recursive: true, force: true }); // drop any partial seed
+  await fs.promises.cp(SLIDE_TEMPLATE, staging, { recursive: true });
+  await fs.promises.rename(staging, slideDir);
   status("slide workspace ready");
 }
 
@@ -718,6 +731,21 @@ function initAutoUpdater() {
 }
 
 // ---- boot -------------------------------------------------------------------
+
+// Single-instance: a second launch (e.g. the installer's run-on-finish plus the
+// shortcut) would race the first over the one opencode port and the shared
+// per-user data dir — which can corrupt the first-run slide seed. Refuse the
+// second instance and focus the existing window instead.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  process.exit(0);
+}
+app.on("second-instance", () => {
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // no native menu bar — this is a kiosk-style app
