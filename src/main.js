@@ -693,6 +693,30 @@ function createWindow() {
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
+// ---- auto-update ------------------------------------------------------------
+
+// Installed builds check GitHub Releases for a newer version on launch, download
+// it in the background, and install on quit. The repo is public, so no token is
+// needed; app-update.yml (bundled by electron-builder from the publish config)
+// points electron-updater at the release feed. No-op in dev (no app-update.yml).
+function initAutoUpdater() {
+  if (!app.isPackaged) return;
+  let autoUpdater;
+  try {
+    ({ autoUpdater } = require("electron-updater"));
+  } catch (err) {
+    return statusError(`auto-update unavailable: ${err.message}`);
+  }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on("update-available", (info) => status(`update ${info.version} available — downloading`));
+  autoUpdater.on("update-not-available", () => status("app is up to date"));
+  autoUpdater.on("download-progress", (p) => status(`downloading update… ${Math.round(p.percent)}%`));
+  autoUpdater.on("update-downloaded", (info) => status(`update ${info.version} ready — installs when you quit`));
+  autoUpdater.on("error", (err) => statusError(`update check failed: ${err?.message || err}`));
+  autoUpdater.checkForUpdates().catch((err) => statusError(`update check failed: ${err?.message || err}`));
+}
+
 // ---- boot -------------------------------------------------------------------
 
 app.whenReady().then(async () => {
@@ -713,6 +737,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("auth:oauthFinish", handleAuthOauthFinish);
 
   createWindow();
+  initAutoUpdater(); // background check; non-blocking, installed builds only
   await ensureSlideProject();
   startSlideServer();
 
