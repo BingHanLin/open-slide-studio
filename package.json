@@ -3,6 +3,7 @@
   "productName": "open-slide studio",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Bundled desktop GUI: simplified opencode agent chat (left) + open-slide live web view (right). For non-engineers to build slides by natural language.",
   "main": "src/main.js",
   "author": "Binghan Lin",
