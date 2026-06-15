@@ -1,6 +1,10 @@
 # open-slide studio
 
 <p align="center">
+  <b>English</b> · <a href="README.zh-TW.md">繁體中文</a>
+</p>
+
+<p align="center">
   <img src="docs/hero.png" alt="open-slide studio — opencode agent chat on the left, the live open-slide deck on the right" width="900">
 </p>
 
