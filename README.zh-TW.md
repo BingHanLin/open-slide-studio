@@ -90,6 +90,12 @@ Electron 外殼
 └── renderer ── 左：對話 UI   右：<webview> → open-slide 開發伺服器
 ```
 
+**獨立的 opencode 環境。** App 啟動 `opencode serve` 時，會把它的設定與資料目錄指向 App 自己
+的使用者專屬路徑——`<userData>/opencode-data`，透過 opencode 認得的 `XDG_*` base-dir 環境變數
+設定——而**不是**機器上全域的 opencode 設定（例如 `~/.config/opencode`）。因此 App 的憑證
+（`auth.json`）、對話紀錄（`opencode.db`）與模型快取都存放在 App 底下、彼此獨立：在終端機登入
+opencode 與在 App 內認證是兩回事，雙方互不可見、互不影響。
+
 ---
 
 # 給開發者

@@ -1,0 +1,81 @@
+name: Update opencode & open-slide
+
+# Weekly check that the app still builds against the latest opencode runtime/SDK
+# and the latest open-slide CLI. Bumps the two opencode npm deps to their newest
+# versions and, if anything changed, opens a PR for review (never auto-merges).
+#
+# open-slide is NOT a package.json dependency — it is scaffolded fresh at build
+# time via `npx --yes @open-slide/cli` (see release.yml), so it is already always
+# latest. Here we only *verify* the newest CLI still scaffolds cleanly, to catch
+# upstream breaking changes early.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # every Monday 06:00 UTC
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the dependency bump to a branch
+      pull-requests: write # open the review PR
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      # Clean install from the committed lockfile as the baseline.
+      - run: npm ci
+
+      # Bump the opencode runtime + SDK to latest. `@latest` rewrites the
+      # package.json range and refreshes package-lock.json (incl. the platform
+      # opencode binary via postinstall).
+      - name: Update opencode deps to latest
+        run: npm install opencode-ai@latest @opencode-ai/sdk@latest
+
+      # Syntax gate (same as CI). The .mjs e2e tests need a live model, so they
+      # are intentionally not run here. `continue-on-error` lets the PR still be
+      # opened on failure so the diff is reviewable — the result is recorded in
+      # the PR body below.
+      - id: test
+        name: Run npm test
+        continue-on-error: true
+        run: npm test
+
+      # Compatibility check only: make sure the newest open-slide CLI still
+      # scaffolds. Use a throwaway dir so it never touches the working tree.
+      - id: openslide
+        name: Verify latest open-slide scaffolds
+        continue-on-error: true
+        run: npx --yes @open-slide/cli init "$RUNNER_TEMP/openslide-check" --use-npm --no-git --force
+
+      # Open a PR only when package.json / package-lock.json actually changed.
+      # The PR is opened regardless of test/scaffold outcome; the body flags any
+      # failure so you can review the diff and decide.
+      - name: Open PR if deps changed
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: deps/update-opencode
+          commit-message: "chore(deps): bump opencode runtime & SDK to latest"
+          title: "chore(deps): update opencode to latest"
+          body: |
+            Automated weekly dependency check.
+
+            Bumped `opencode-ai` and `@opencode-ai/sdk` to their latest versions.
+
+            | Check | Result |
+            |-------|--------|
+            | `npm test` (syntax gate) | ${{ steps.test.outcome == 'success' && '✅ passed' || '❌ FAILED — review before merging' }} |
+            | Latest `@open-slide/cli` scaffolds | ${{ steps.openslide.outcome == 'success' && '✅ ok' || '❌ FAILED — possible upstream breaking change' }} |
+
+            > ⚠️ A ❌ above means the bump may be broken. Open the workflow run logs
+            > for details before merging.
+
+            open-slide itself is not pinned — it is pulled fresh at build time —
+            so no version bump appears here for it; this PR only reflects the
+            opencode npm deps.
+          labels: dependencies
+          delete-branch: true

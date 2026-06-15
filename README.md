@@ -94,6 +94,14 @@ Electron shell
 └── renderer ── left: chat UI   right: <webview> → open-slide dev server
 ```
 
+**Isolated opencode environment.** The app spawns `opencode serve` with its config and
+data directories pointed into the app's own per-user location — `<userData>/opencode-data`,
+via the `XDG_*` base-dir vars opencode honors — **not** the global opencode setup on your
+machine (e.g. `~/.config/opencode`). So the app's credentials (`auth.json`), session
+history (`opencode.db`), and model cache all live under the app and stay separate: logging
+into opencode in a terminal and authenticating inside the app are independent, and neither
+sees the other's setup.
+
 ---
 
 # For developers
